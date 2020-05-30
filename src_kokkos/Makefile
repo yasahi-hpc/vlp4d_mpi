@@ -1,5 +1,5 @@
 # Device can be p100, v100, bdw, skx, tx2
-DEVICE=bdw
+DEVICE=p100
 KOKKOS_DEVICES = $(DEVICE)
 SRC = $(wildcard ./*.cpp)
 vpath %.cpp $(sort $(dir $(SRC)))
@@ -122,9 +122,10 @@ test: $(EXE)
 
 $(EXE): $(OBJ) $(KOKKOS_LINK_DEPENDS)
 	$(LINK) $(KOKKOS_LDFLAGS) $(EXTRA_PATH) $(OBJ) $(KOKKOS_LIBS) $(LIB) -o $(EXE) $(LDFLAGS)
+	mv $(EXE) ../wk
 
 clean: kokkos-clean 
-	rm -f *.o vlp4d.*kokkos 
+	rm -f *.o vlp4d.*kokkos ../wk/vlp4d.*kokkos
 
 # Compilation rules
 

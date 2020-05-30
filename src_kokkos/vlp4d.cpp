@@ -77,7 +77,9 @@ int main (int argc, char* argv[]) {
     timers[Field]->end();
 
     while(iter <conf.dom_.nbiter_) {
-      printf("iter %d\n", iter);
+      if(comm.master()) {
+        printf("iter %d\n", iter);
+      }
 
       iter++;
       onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);

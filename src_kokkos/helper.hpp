@@ -65,6 +65,29 @@ static void L2norm(View2D<T> &view, int rank) {
 }
 
 template <typename T>
+static void printAll(View2D<T> &view, int rank) {
+
+  const size_t n0 = view.extent_int(0);
+  const size_t n1 = view.extent_int(1);
+
+  std::stringstream ss;
+  ss << view.label() << ".rank" << rank << ".dat";
+
+  std::ofstream outfile;
+  outfile.open(ss.str(), std::ios::out);
+
+  typename View2D<T>::HostMirror h_view = Kokkos::create_mirror_view(view);
+  Kokkos::deep_copy(h_view, view);
+
+  for(int i1 = 0; i1 < n1; i1++) {
+    for(int i0 = 0; i0 < n0; i0++) {
+      outfile << h_view(i0,i1) << ", ";
+    }
+    outfile << "\n";
+  }
+}
+
+template <typename T>
 static void printAll(LeftView2D<T> &view, int rank) {
   T norm;
 

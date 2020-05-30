@@ -48,7 +48,7 @@ void onetimestep(Config *conf, Distrib &comm, RealView4D fn, RealView4D fnp1, Ef
   timers[Advec4D]->end();
 
   timers[Field]->begin();
-  field_rho(conf, comm, fn, ef);
+  field_rho(conf, comm, fnp1, ef);
   field_poisson(conf, ef, dg, iter);
   Kokkos::fence();
   timers[Field]->end();

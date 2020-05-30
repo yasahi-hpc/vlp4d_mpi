@@ -5,7 +5,7 @@
 #$ -N parallel
 . /etc/profile.d/modules.sh # Initialize module command
 module load cuda intel
-module load openmpi/3.1.4-opa10.10-t3
+module load openmpi/2.1.2-opa10.9-t3-thread-multiple
 
 export OMP_NUM_THREADS=14
 export OMP_PROC_BIND=true

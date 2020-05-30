@@ -66,6 +66,7 @@ struct Halos{
   /* Return the */
   float64* buf(const int i) {
     float64* dptr_buf = buf_flatten_.data();
+    return dptr_buf;
   }
 
   void set(std::vector<Halo> &list, const std::string name) {

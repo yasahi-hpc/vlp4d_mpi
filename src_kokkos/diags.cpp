@@ -11,8 +11,8 @@ Diags::Diags(Config *conf)
   const int nbiter = conf->dom_.nbiter_ + 1;
 
   nrj_    = RealHostView1D("nrj",    nbiter);
-  nrjx_   = RealHostView1D("nrj",    nbiter);
-  nrjy_   = RealHostView1D("nrj",    nbiter);
+  nrjx_   = RealHostView1D("nrjx",   nbiter);
+  nrjy_   = RealHostView1D("nrjy",   nbiter);
   mass_   = RealHostView1D("mass",   nbiter);
   l2norm_ = RealHostView1D("l2norm", nbiter);
 }
@@ -29,6 +29,8 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
 
   // Capturing a class member causes a problem
   // See https://github.com/kokkos/kokkos/issues/695
+  //
+  /*
   float64 mass;
   Scalar2<float64> ee;
   MDPolicyType_2D moment_policy2d({{0, 0}},
@@ -51,6 +53,8 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
   float64 it_nrj    = ee.x * ee.y;
   float64 it_nrjx   = ee.x;
   float64 it_nrjy   = ee.y;
+  */
+
 
   //typedef Kokkos::View<float64[4], execution_space> ScalarsView;
   //ScalarsView sums;
@@ -88,13 +92,12 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
   }, sums);
   */
 
-  /*
   //typename ScalarsView::HostMirror h_sums  = Kokkos::create_mirror_view(sums);
   //Kokkos::deep_copy(h_sums, sums);
   //
-  // Scatter view
-  typedef Kokkos::View<float64[4], execution_space> ScalarsView;
-  ScalarsView sums;
+  // Use Scatter view for reduction
+  typedef Kokkos::View<float64*, execution_space> ScalarsView;
+  ScalarsView sums("sum", 4);
   auto scatter_sums = Kokkos::Experimental::create_scatter_view(sums);
   MDPolicyType_2D moment_policy2d({{0, 0}},
                                   {{nx, ny}},
@@ -105,28 +108,20 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
     const float64 eex = ex(ix, iy);
     const float64 eey = ey(ix, iy);
 
-    auto access_elements_per_node = scatter_sums.access();
-    access_elements_per_node(0) += rho(ix, iy);
-    access_elements_per_node(1) += eex * eex + eey * eey;
-    access_elements_per_node(2) += eex * eex;
-    access_elements_per_node(3) += eey * eey;
+    auto access_sums = scatter_sums.access();
+    access_sums(0) += rho(ix, iy);
+    access_sums(1) += eex * eex + eey * eey;
+    access_sums(2) += eex * eex;
+    access_sums(3) += eey * eey;
   });
-  Kokkos::Experimental::contribute(sums, scatter_sums);
 
-  //float64 iter_mass = sums.x;
-  //float64 it_nrj    = sums.y;
-  //float64 it_nrjx   = sums.z;
-  //float64 it_nrjy   = 0;
-  //float64 it_nrjx   = sums.x;
-  //float64 it_nrjy   = sums.w;
-  //
-  typename ScalarsView::HostMirror h_sums  = Kokkos::create_mirror_view(sums);
+  Kokkos::Experimental::contribute(sums, scatter_sums);
+  typename ScalarsView::HostMirror h_sums = Kokkos::create_mirror_view(sums);
   Kokkos::deep_copy(h_sums, sums);
   float64 iter_mass = h_sums(0);
   float64 it_nrj    = h_sums(1);
   float64 it_nrjx   = h_sums(2);
   float64 it_nrjy   = h_sums(3);
-  */
 
   it_nrj = sqrt(it_nrj * dom->dx_[0] * dom->dx_[1]);
   it_nrj = it_nrj > 1.e-30 ? log(it_nrj) : -1.e9;
@@ -134,7 +129,7 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
   nrj_(iter)  = it_nrj;
   nrjx_(iter) = sqrt(0.5 * it_nrjx * dom->dx_[0] * dom->dx_[1]);
   nrjy_(iter) = sqrt(0.5 * it_nrjy * dom->dx_[0] * dom->dx_[1]);
-  mass_(iter) = iter_mass * dom->dx_[0] + dom->dx_[1];
+  mass_(iter) = iter_mass * dom->dx_[0] * dom->dx_[1];
 }
 
 void Diags::computeL2norm(Config *conf, RealView4D fn, int iter)
