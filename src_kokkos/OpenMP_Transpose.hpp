@@ -42,8 +42,8 @@ namespace Impl {
                    typename std::enable_if<std::is_same<ScalarType, int>::value       ||
                                            std::is_same<ScalarType, float32>::value   ||
                                            std::is_same<ScalarType, float64>::value   ||
-                                           std::is_same<ScalarType, complex32>::value ||
-                                           std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
+                                           std::is_same<ScalarType, complex64>::value ||
+                                           std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
           //exec_serial(dptr_in, dptr_out, row_, col_);
           exec(dptr_in, dptr_out, row_, col_);
       }
@@ -52,8 +52,8 @@ namespace Impl {
                     typename std::enable_if<std::is_same<ScalarType, int>::value       ||
                                             std::is_same<ScalarType, float32>::value   ||
                                             std::is_same<ScalarType, float64>::value   ||
-                                            std::is_same<ScalarType, complex32>::value ||
-                                            std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
+                                            std::is_same<ScalarType, complex64>::value ||
+                                            std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
           //exec_serial(dptr_in, dptr_out, row_, col_);
           exec(dptr_in, dptr_out, col_, row_);
       }
@@ -65,8 +65,8 @@ namespace Impl {
                 typename std::enable_if<std::is_same<ScalarType, int>::value       ||
                                         std::is_same<ScalarType, float32>::value   ||
                                         std::is_same<ScalarType, float64>::value   ||
-                                        std::is_same<ScalarType, complex32>::value ||
-                                        std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
+                                        std::is_same<ScalarType, complex64>::value ||
+                                        std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
         #pragma omp parallel for schedule(static) collapse(2)
         for(int j = 0; j < col; j += blocksize_) {
           for(int i = 0; i < row; i += blocksize_) {
@@ -85,8 +85,8 @@ namespace Impl {
                 typename std::enable_if<std::is_same<ScalarType, int>::value       ||
                                         std::is_same<ScalarType, float32>::value   ||
                                         std::is_same<ScalarType, float64>::value   ||
-                                        std::is_same<ScalarType, complex32>::value ||
-                                        std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
+                                        std::is_same<ScalarType, complex64>::value ||
+                                        std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
          for(int c = 0; c < col; c++) {
            for(int r = 0; r < row; r++) {
              int idx_src = Index::coord_2D2int(r, c, row, col);

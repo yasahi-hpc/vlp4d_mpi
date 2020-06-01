@@ -45,16 +45,16 @@ namespace Impl {
       void forward(ScalarType *dptr_in, ScalarType *dptr_out,
                    typename std::enable_if<std::is_same<ScalarType, float32>::value   ||
                                            std::is_same<ScalarType, float64>::value   ||
-                                           std::is_same<ScalarType, complex32>::value ||
-                                           std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
+                                           std::is_same<ScalarType, complex64>::value ||
+                                           std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
         cublasTranspose_(dptr_in, dptr_out, row_, col_);
       }
 
       void backward(ScalarType *dptr_in, ScalarType *dptr_out,
                     typename std::enable_if<std::is_same<ScalarType, float32>::value   ||
                                             std::is_same<ScalarType, float64>::value   ||
-                                            std::is_same<ScalarType, complex32>::value ||
-                                            std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
+                                            std::is_same<ScalarType, complex64>::value ||
+                                            std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
         cublasTranspose_(dptr_in, dptr_out, col_, row_);
       }
 
@@ -98,8 +98,8 @@ namespace Impl {
                     col);        // ldc; leading dimension of two-dimensional array used to store C
       }
 
-      // complex32 specialization
-      void cublasTranspose_(complex32 *dptr_in, complex32 *dptr_out, int row, int col) {
+      // complex64 specialization
+      void cublasTranspose_(complex64 *dptr_in, complex64 *dptr_out, int row, int col) {
         const cuComplex alpha = make_cuComplex(1.0, 0.0);
         const cuComplex beta  = make_cuComplex(0.0, 0.0);
         cublasCgeam(handle_,     // handle
@@ -118,7 +118,7 @@ namespace Impl {
       }
 
       // complex64 specialization
-      void cublasTranspose_(complex64 *dptr_in, complex64 *dptr_out, int row, int col) {
+      void cublasTranspose_(complex128 *dptr_in, complex128 *dptr_out, int row, int col) {
         const cuDoubleComplex alpha = make_cuDoubleComplex(1., 0.);
         const cuDoubleComplex beta  = make_cuDoubleComplex(0., 0.);
         cublasZgeam(handle_,     // handle

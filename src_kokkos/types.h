@@ -17,8 +17,8 @@ typedef uint64_t uint64;
 
 typedef float  float32;
 typedef double float64;
-typedef Kokkos::complex<float32> complex32;
-typedef Kokkos::complex<float64> complex64;
+typedef Kokkos::complex<float32> complex64;
+typedef Kokkos::complex<float64> complex128;
 // const complex64 I = complex64(0., 1.); // for some reason, it does not work for GPU version
 
 template <unsigned ND> using coord_t = std::array<int, ND>;
@@ -50,10 +50,10 @@ typedef LeftView2D<float64> RealLeftView2D;
 typedef LeftView3D<float64> RealLeftView3D;
 typedef LeftView4D<float64> RealLeftView4D;
 
-typedef View1D<complex64> ComplexView1D;
-typedef View2D<complex64> ComplexView2D;
-typedef View3D<complex64> ComplexView3D;
-typedef View4D<complex64> ComplexView4D;
+typedef View1D<complex128> ComplexView1D;
+typedef View2D<complex128> ComplexView2D;
+typedef View3D<complex128> ComplexView3D;
+typedef View4D<complex128> ComplexView4D;
 
 
 // Range Policies

@@ -16,11 +16,11 @@ namespace Impl {
     fftw_plan backward_c2c_plan_, backward_c2r_plan_;
 
     // Thread private buffer
-    complex64 *dptr_buffer_c_;
-    complex64 *thread_private_buffers_nx1h_, *thread_private_buffers_nx2_;
-    complex64 *thread_private_buffers_nx2_out_;
-    float64   *thread_private_buffers_nx1_r2c_;
-    float64   *thread_private_buffers_nx1_c2r_;
+    complex128 *dptr_buffer_c_;
+    complex128 *thread_private_buffers_nx1h_, *thread_private_buffers_nx2_;
+    complex128 *thread_private_buffers_nx2_out_;
+    float64    *thread_private_buffers_nx1_r2c_;
+    float64    *thread_private_buffers_nx1_c2r_;
 
     ComplexView3D d_buffer_c_;
     ComplexView2D d_thread_private_buffers_nx1h_, d_thread_private_buffers_nx2_;
@@ -44,31 +44,31 @@ namespace Impl {
       fftw_destroy_plan(backward_c2r_plan_);
     }
 
-    void fft(complex64 *dptr_in, complex64 *dptr_out) {
+    void fft(complex128 *dptr_in, complex128 *dptr_out) {
       fftw_complex *in  = reinterpret_cast<fftw_complex*>(dptr_in);
       fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
       fftw_execute_dft(forward_c2c_plan_, in, out);
     }
 
-    void fftr2c(float64 *dptr_in, complex64 *dptr_out) {
+    void fftr2c(float64 *dptr_in, complex128 *dptr_out) {
       fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
       fftw_execute_dft_r2c(forward_r2c_plan_, dptr_in, out);
     }
 
-    void ifft(complex64 *dptr_in, complex64 *dptr_out) {
+    void ifft(complex128 *dptr_in, complex128 *dptr_out) {
       fftw_complex *in  = reinterpret_cast<fftw_complex*>(dptr_in);
       fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
       fftw_execute_dft(backward_c2c_plan_, in, out);
     }
 
-    void ifftc2r(complex64 *dptr_in, float64 *dptr_out) {
+    void ifftc2r(complex128 *dptr_in, float64 *dptr_out) {
       fftw_complex *in = reinterpret_cast<fftw_complex*>(dptr_in);
       fftw_execute_dft_c2r(backward_c2r_plan_, in, dptr_out);
     }
 
     /* In the host code, we assume LayoutRight (C style)
      */
-    void fft2(float64 *dptr_in, complex64 *dptr_out) {
+    void fft2(float64 *dptr_in, complex128 *dptr_out) {
       if(nb_batches_ == 1) {
         fft2_serial(dptr_in, dptr_out);
       }
@@ -82,7 +82,7 @@ namespace Impl {
      * @param[in]  dptr_in(nx1h,nx2,batch)
      * @param[out] dptr_out(nx1,nx2,batch)
      */
-    void ifft2(complex64 *dptr_in, float64 *dptr_out) {
+    void ifft2(complex128 *dptr_in, float64 *dptr_out) {
       if(nb_batches_ == 1) {
         ifft2_serial(dptr_in, dptr_out);
       }
@@ -97,13 +97,13 @@ namespace Impl {
      * @param[in]  dptr_in(nx1,nx2)
      * @param[out] dptr_out(nx1h,nx2)
      */
-    void fft2_serial(float64 *dptr_in, complex64 *dptr_out) {
+    void fft2_serial(float64 *dptr_in, complex128 *dptr_out) {
       #pragma omp parallel
       {
         int tid = omp_get_thread_num();
-        float64   *thread_private_buffer_nx1 = &thread_private_buffers_nx1_r2c_[nx1_*tid];
-        complex64 *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
-        complex64 *thread_private_buffer_nx2 = &thread_private_buffers_nx2_[nx2_*tid];
+        float64    *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
+        complex128 *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
+        complex128 *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
         // Fourier Transform in x direction
         #pragma omp for schedule(static)
         for(int ix2=0; ix2 < nx2_; ix2++) {
@@ -137,13 +137,13 @@ namespace Impl {
      * @param[in]  dptr_in(nx1,nx2,batch)
      * @param[out] dptr_out(nx1h,nx2,batch)
      */
-    void fft2_batch(float64 *dptr_in, complex64 *dptr_out) {
+    void fft2_batch(float64 *dptr_in, complex128 *dptr_out) {
       #pragma omp parallel
       {
         int tid = omp_get_thread_num();
-        float64   *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
-        complex64 *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
-        complex64 *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
+        float64    *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
+        complex128 *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
+        complex128 *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
         // Fourier Transform in x direction
         #pragma omp for schedule(static), collapse(2)
         for(int ib=0; ib<nb_batches_; ib++) {
@@ -182,13 +182,13 @@ namespace Impl {
      * @param[in]  dptr_in(nx1h,nx2)
      * @param[out] dptr_out(nx1,nx2)
      */
-    void ifft2_serial(complex64 *dptr_in, float64 *dptr_out) {
+    void ifft2_serial(complex128 *dptr_in, float64 *dptr_out) {
       #pragma omp parallel
       {
         int tid = omp_get_thread_num();
-        float64   *thread_private_buffer_nx1 = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
-        complex64 *thread_private_buffer_nx2 = &thread_private_buffers_nx2_[nx2_*tid];
-        complex64 *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
+        float64    *thread_private_buffer_nx1 = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
+        complex128 *thread_private_buffer_nx2 = &thread_private_buffers_nx2_[nx2_*tid];
+        complex128 *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
         // Inverse Fourier Transform in y direction
         #pragma omp for schedule(static)
         for(int ix1=0; ix1 < nx1h_; ix1++) {
@@ -222,13 +222,13 @@ namespace Impl {
      * @param[in]  dptr_in(nx1h,nx2,batch)
      * @param[out] dptr_out(nx1,nx2,batch)
      */
-    void ifft2_batch(complex64 *dptr_in, float64 *dptr_out) {
+    void ifft2_batch(complex128 *dptr_in, float64 *dptr_out) {
       #pragma omp parallel
       {
         int tid = omp_get_thread_num();
-        float64   *thread_private_buffer_nx1     = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
-        complex64 *thread_private_buffer_nx2     = &thread_private_buffers_nx2_[nx2_*tid];
-        complex64 *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
+        float64    *thread_private_buffer_nx1     = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
+        complex128 *thread_private_buffer_nx2     = &thread_private_buffers_nx2_[nx2_*tid];
+        complex128 *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
         // Inverse Fourier Transform in y direction
         #pragma omp for schedule(static), collapse(2)
         for(int ib=0; ib < nb_batches_; ib++) {

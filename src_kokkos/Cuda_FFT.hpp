@@ -47,14 +47,14 @@ namespace Impl {
       SafeCudaCall( cufftDestroy(backward_plan_) );
     }
 
-    void fft2(float64 *dptr_in, complex64 *dptr_out)
+    void fft2(float64 *dptr_in, complex128 *dptr_out)
     {
       double *in = reinterpret_cast<double *>(dptr_in);
       cuDoubleComplex *out = reinterpret_cast<cuDoubleComplex *>(dptr_out);
       SafeCudaCall(cufftExecD2Z(forward_plan_, in, out));
     }
 
-    void ifft2(complex64 *dptr_in, float64 *dptr_out)
+    void ifft2(complex128 *dptr_in, float64 *dptr_out)
     {
       double *out = reinterpret_cast<double *>(dptr_out);
       cuDoubleComplex *in = reinterpret_cast<cuDoubleComplex *>(dptr_in);
