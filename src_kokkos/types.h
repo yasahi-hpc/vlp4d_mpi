@@ -55,6 +55,8 @@ typedef View2D<complex128> ComplexView2D;
 typedef View3D<complex128> ComplexView3D;
 typedef View4D<complex128> ComplexView4D;
 
+typedef View1D<int> IntView1D;
+typedef View2D<int> IntView2D;
 
 // Range Policies
 typedef typename Kokkos::MDRangePolicy< Kokkos::Rank<2, Kokkos::Iterate::Default, Kokkos::Iterate::Default> > MDPolicyType_2D;

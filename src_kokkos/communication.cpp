@@ -357,19 +357,8 @@ void Distrib::bookHalo(Config *conf) {
 
   // Copy into Kokkos suited structure
   // Halo size large enough to store 
-  send_buffers_.set(send_list_, "send");
-  recv_buffers_.set(recv_list_, "recv");
-
-  /*
-  int i = 0;
-  for (auto it = send_list_.begin() ; it != send_list_.end(); ++it)
-  {
-    printf ("send_list_ %d i %d id %d [%d:%d , %d:%d , %d:%d , %d:%d]\n",i,pid_,(*it).pid_,
-        (*it).xmin_[0],(*it).xmax_[0],(*it).xmin_[1],(*it).xmax_[1],
-        (*it).xmin_[2],(*it).xmax_[2],(*it).xmin_[3],(*it).xmax_[3]);
-    i++;
-  }
-  */
+  send_buffers_.set(conf, send_list_, "send", nbp_, pid_);
+  recv_buffers_.set(conf, recv_list_, "recv", nbp_, pid_);
 
   fprintf(stderr, "[%d] Number of halo blocs = %lu\n", pid_, send_list_.size());
 }
@@ -495,6 +484,39 @@ int Distrib::mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std
   return 0;
 }
 
+void Distrib::Isend(int &creq, std::vector<MPI_Request> &req) {
+  int nb_halos = send_buffers_.nb_merged_halos_;
+  int size_local_copy = send_buffers_.merged_size(pid_);
+  for(int i = 0; i < nb_halos; i++) {
+    if(i == pid_) {
+      // Then local copy
+      Kokkos::parallel_for("copy", size_local_copy, local_copy(send_buffers_, recv_buffers_));
+    } else {
+      // Then MPI communication
+      float64 *head  = send_buffers_.head(i);
+      const int size = send_buffers_.merged_size(i);
+      const int pid  = send_buffers_.merged_pid(i);
+      const int tag  = send_buffers_.merged_tag(i);
+      MPI_Isend(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
+    }
+  }
+}
+     
+void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
+  int nb_halos = recv_buffers_.nb_merged_halos_;
+  int size_local_copy = recv_buffers_.merged_size(pid_);
+  for(int i = 0; i < nb_halos; i++) {
+    if(i != pid_) {
+      // Then MPI communication
+      float64 *head  = recv_buffers_.head(i);
+      const int size = recv_buffers_.merged_size(i);
+      const int pid  = recv_buffers_.merged_pid(i);
+      const int tag  = recv_buffers_.merged_tag(i);
+      MPI_Irecv(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
+    }
+  }
+}
+
 /*
   @biref Copy values of distribution function in to the halo regions (within slist) that will be sent.
          called in exchangeHalo function
@@ -503,17 +525,20 @@ int Distrib::mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std
   @param[inout] halo_fn
     Indentical to fn?
  */
-void Distrib::applyBoundaryCondition(Config *conf, RealView4D halo_fn) {
+void Distrib::packAndBoundary(Config *conf, RealView4D halo_fn) {
   if(spline_) {
     const int nx_send  = send_buffers_.nhalo_max_[0];
     const int ny_send  = send_buffers_.nhalo_max_[1];
     const int nvx_send = send_buffers_.nhalo_max_[2];
     const int nvy_send = send_buffers_.nhalo_max_[3];
     const int nb_send_halos = send_buffers_.nb_halos_;
+    const int total_size = send_buffers_.total_size_;
     MDPolicyType_4D mdpolicy4d({{0, 0, 0, 0}},
                                {{nx_send, ny_send, nvx_send, nb_send_halos}},
                                {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
                               );
+
+    Kokkos::parallel_for("pack", mdpolicy4d, pack(conf, halo_fn, send_buffers_));
 
     #if defined( KOKKOS_ENABLE_CUDA )
       Kokkos::parallel_for("boundary_condition", mdpolicy4d, boundary_condition(conf, halo_fn, send_buffers_));
@@ -524,7 +549,14 @@ void Distrib::applyBoundaryCondition(Config *conf, RealView4D halo_fn) {
     #ifdef CHECKSPLINE
     Kokkos::parallel_for("boundary_condition_orig", mdpolicy4d, boundary_condition_orig(conf, halo_fn, send_buffers_));
     #endif
+
+    Kokkos::parallel_for("merged_pack", total_size, merged_pack(send_buffers_));
   }
+}
+
+void Distrib::unpack(RealView4D halo_fn) {
+  int total_size = recv_buffers_.total_size_;
+  Kokkos::parallel_for("merged_unpack", total_size, merged_unpack(halo_fn, recv_buffers_));
 }
 
 
@@ -542,50 +574,22 @@ void Distrib::exchangeHalo(Config *conf, RealView4D halo_fn, std::vector<Timer*>
   std::vector<MPI_Request> req;
   std::vector<MPI_Status>  stat;
   int nbreq = 0, creq = 0;
-  nbreq = recv_list_.size() + send_list_.size();
+  nbreq = recv_buffers_.nb_reqs() + send_buffers_.nb_reqs();
   creq  = 0;
   req.resize(nbreq);
   stat.resize(nbreq);
 
   // CUDA Aware MPI
   timers[Halo_fill_A]->begin();
-  int size = recv_buffers_.size_;
-  for(int i = 0; i < recv_buffers_.nb_halos_; i++) {
-    //BufferView1D buf = Kokkos::subview(recv_buffers_.buf_, Kokkos::ALL (), i);
-    //MPI_Irecv(buf.data()
-    float64 *buf = recv_buffers_.buf_.data() + i * size; // buf_ is LayoutLeft
-    int pid = recv_buffers_.pids_[i];
-    int tag = recv_buffers_.tags_[i];
-    MPI_Irecv(buf, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
-  }
+  Irecv(creq, req);
 
-  // fill halo regions
-  const int nx_send  = send_buffers_.nhalo_max_[0];
-  const int ny_send  = send_buffers_.nhalo_max_[1];
-  const int nvx_send = send_buffers_.nhalo_max_[2];
-  const int nvy_send = send_buffers_.nhalo_max_[3];
-  const int nb_send_halos = send_buffers_.nb_halos_;
-  MDPolicyType_4D pack_policy4d({{0, 0, 0, 0}}, 
-                                {{nx_send, ny_send, nvx_send, nb_send_halos}}, 
-                                {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
-                               );
-  Kokkos::parallel_for("pack", pack_policy4d, pack(conf, halo_fn, send_buffers_));
-
-  applyBoundaryCondition(conf, halo_fn);
+  packAndBoundary(conf, halo_fn);
   Kokkos::fence();
   timers[Halo_fill_A]->end();
   timers[Halo_comm]->begin();
 
-  // send halo regions
-  for(int i = 0; i < send_buffers_.nb_halos_; i++) {
-    float64 *buf = send_buffers_.buf_.data() + i * size; // buf_ is LayoutLeft
-    int pid = send_buffers_.pids_[i];
-    int tag = send_buffers_.tags_[i];
-    MPI_Isend(buf, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
-  }
-
-  assert(creq == nbreq);
-  MPI_Waitall(nbreq, req.data(), stat.data());
+  Isend(creq, req); // local copy done inside
+  Waitall(creq, req, stat);
 
   // clear vectors
   std::vector<MPI_Request>().swap(req);
@@ -594,16 +598,7 @@ void Distrib::exchangeHalo(Config *conf, RealView4D halo_fn, std::vector<Timer*>
   timers[Halo_fill_B]->begin();
 
   // copy halo regions back into distribution function
-  const int nx_recv  = recv_buffers_.nhalo_max_[0];
-  const int ny_recv  = recv_buffers_.nhalo_max_[1];
-  const int nvx_recv = recv_buffers_.nhalo_max_[2];
-  const int nvy_recv = recv_buffers_.nhalo_max_[3];
-  const int nb_recv_halos = recv_buffers_.nb_halos_;
-  MDPolicyType_4D unpack_policy4d({{0, 0, 0, 0}}, 
-                                  {{nx_recv, ny_recv, nvx_recv, nb_recv_halos}}, 
-                                  {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
-                                 );
-  Kokkos::parallel_for("unpack", unpack_policy4d, unpack(conf, halo_fn, recv_buffers_));
+  unpack(halo_fn);
   Kokkos::fence();
   timers[Halo_fill_B]->end();
 }
