@@ -4,6 +4,7 @@
 #include <vector>
 #include <mpi.h>
 #include <algorithm>
+#include <cassert>
 #include "types.h"
 #include "config.h"
 #include "index.h"
@@ -53,23 +54,152 @@ struct Halos{
   RangeView2D lxmin_;
   RangeView2D lxmax_;
 
-  //shape_t<DIMENSION> lxmin_;
-  //shape_t<DIMENSION> lxmax_;
   shape_t<DIMENSION> nhalo_max_;
-  //RangeView2D lxmin_;
-  //RangeView2D lxmax_;
   int size_;     // buffer size of each halo
   int nb_halos_; // the number of halos
+  int pid_, nbp_;
+
+  std::vector<int> sizes_;
   std::vector<int> pids_;
   std::vector<int> tags_;
 
+  /* Used for merge */
+  RangeView2D map_;         // f -> flatten_buf
+  IntView2D   flatten_map_; // buf -> flatten_buf
+  int offset_local_copy_; // The head address for the local copy
+  std::vector<int> merged_sizes_; // buffer size of each halo
+  std::vector<int> merged_pids_; // merged process id to interact with
+  std::vector<int> merged_tags_; //
+  std::vector<int> id_map_; // mapping the original id to the merged id
+  std::vector<int> merged_heads_;
+  int total_size_; // total size of all the buffers
+  int nb_merged_halos_; // number of halos after merge
+
   /* Return the */
-  float64* buf(const int i) {
-    float64* dptr_buf = buf_flatten_.data();
+  float64* head(const int i) {
+    float64* dptr_buf = buf_flatten_.data() + merged_heads_.at(i);
     return dptr_buf;
   }
 
-  void set(std::vector<Halo> &list, const std::string name) {
+  int merged_size(const int i) {
+    return merged_sizes_.at(i);
+  }
+  
+  int merged_pid(const int i) {
+    return merged_pids_.at(i);
+  }
+   
+  int merged_tag(const int i) {
+    return merged_tags_.at(i);
+  }
+   
+  int nb_reqs(){ return (nbp_ - 1); };
+
+  void mergeLists(Config *conf, const std::string name) {
+    int total_size = 0;
+    std::vector<int> id_map( nb_halos_ );
+    std::vector< std::vector<int> > group_same_dst;
+
+    for(int pid = 0; pid < nbp_; pid++) {
+      if(pid == pid_) {
+        offset_local_copy_ = total_size;
+      }
+      std::vector<int> same_dst;
+      for(auto it = pids_.begin(); it != pids_.end(); it++) {
+        if(*it == pid) {
+          int dst_id = std::distance(pids_.begin(), it);
+          same_dst.push_back( std::distance(pids_.begin(), it) );
+        }
+      }
+                         
+      // Save merged data for current pid
+      int size = 0;
+      int tag = tags_[same_dst[0]]; // Use the tag of first element
+      for(auto it: same_dst) {
+        id_map.at(it) = total_size + size;
+        size += sizes_[it];
+      }
+       
+      merged_sizes_.push_back(size);
+      merged_pids_.push_back(pid);
+      merged_tags_.push_back(tag);
+      total_size += size; // Size of the total size summed up for previous pids
+      group_same_dst.push_back(same_dst);
+    }
+
+    total_size_  = total_size;
+    map_         = RangeView2D("map", total_size); // This is used for receive buffer
+    buf_flatten_ = RealView1D(name + "_buf_flat", total_size);
+    flatten_map_ = IntView2D("flatten_map", total_size, 2); // storing (idx_in_buf, buf_id)
+
+    typename RangeView2D::HostMirror h_map  = Kokkos::create_mirror_view(map_);
+    typename RangeView2D::HostMirror h_xmin = Kokkos::create_mirror_view(xmin_);
+    typename RangeView2D::HostMirror h_xmax = Kokkos::create_mirror_view(xmax_);
+    Kokkos::deep_copy(h_xmin, xmin_);
+    Kokkos::deep_copy(h_xmax, xmax_);
+
+    const Domain *dom = &(conf->dom_);
+    int nx_max  = dom->nxmax_[0];
+    int ny_max  = dom->nxmax_[1];
+    int nvx_max = dom->nxmax_[2];
+    int nvy_max = dom->nxmax_[3];
+     
+    int local_xstart  = dom->local_nxmin_[0];
+    int local_ystart  = dom->local_nxmin_[1];
+    int local_vxstart = dom->local_nxmin_[2];
+    int local_vystart = dom->local_nxmin_[3];
+
+    int idx_flatten = 0;
+    typename View2D<int>::HostMirror h_flatten_map = Kokkos::create_mirror_view(flatten_map_);
+    for(auto same_dst: group_same_dst) {
+      // Keeping the head index of each halo sets for MPI communication
+      merged_heads_.push_back(idx_flatten);
+      for(auto it: same_dst) {
+        const int ix_min  = h_xmin(it, 0), ix_max  = h_xmax(it, 0);
+        const int iy_min  = h_xmin(it, 1), iy_max  = h_xmax(it, 1);
+        const int ivx_min = h_xmin(it, 2), ivx_max = h_xmax(it, 2);
+        const int ivy_min = h_xmin(it, 3), ivy_max = h_xmax(it, 3);
+        
+        const int nx  = ix_max  - ix_min  + 1;
+        const int ny  = iy_max  - iy_min  + 1;
+        const int nvx = ivx_max - ivx_min + 1;
+        const int nvy = ivy_max - ivy_min + 1;
+        
+        for(int ivy = ivy_min; ivy <= ivy_max; ivy++) {
+          for(int ivx = ivx_min; ivx <= ivx_max; ivx++) {
+            for(int iy = iy_min; iy <= iy_max; iy++) {
+              for(int ix = ix_min; ix <= ix_max; ix++) {
+                int idx = Index::coord_4D2int(ix-ix_min,
+                                              iy-iy_min,
+                                              ivx-ivx_min,
+                                              ivy-ivy_min,
+                                              nx, ny, nvx, nvy);
+              
+                // h_map is used for receive buffer
+                h_map(idx_flatten, 0) = ix  - local_xstart  + HALO_PTS;
+                h_map(idx_flatten, 1) = iy  - local_ystart  + HALO_PTS;
+                h_map(idx_flatten, 2) = ivx - local_vxstart + HALO_PTS;
+                h_map(idx_flatten, 3) = ivy - local_vystart + HALO_PTS;
+                
+                // h_flatten_map is used for send buffer
+                h_flatten_map(idx_flatten, 0) = idx;
+                h_flatten_map(idx_flatten, 1) = it;
+                idx_flatten++;
+              }
+            }
+          }
+        }
+      }
+    }
+    Kokkos::deep_copy(flatten_map_, h_flatten_map);
+    Kokkos::deep_copy(map_, h_map);
+  }
+
+  void set(Config *conf, std::vector<Halo> &list, const std::string name, const int nb_process, const int pid) {
+    nbp_ = nb_process;
+    pid_ = pid;
+    nb_merged_halos_ = nbp_;
+
     nb_halos_ = list.size();
     pids_.resize(nb_halos_);
     tags_.resize(nb_halos_);
@@ -87,13 +217,12 @@ struct Halos{
     typename RangeView2D::HostMirror h_bc_in_min = Kokkos::create_mirror_view(bc_in_min_);
     typename RangeView2D::HostMirror h_bc_in_max = Kokkos::create_mirror_view(bc_in_max_);
 
-    std::vector<int> sizes;
     std::vector<int> nx_halos, ny_halos, nvx_halos, nvy_halos;
     for(size_t i = 0; i < nb_halos_; i++) {
       Halo *halo = &(list[i]);
       int tmp_size = (halo->xmax_[0] - halo->xmin_[0] + 1) * (halo->xmax_[1] - halo->xmin_[1] + 1)
                    * (halo->xmax_[2] - halo->xmin_[2] + 1) * (halo->xmax_[3] - halo->xmin_[3] + 1);
-      sizes.push_back(tmp_size);
+      sizes_.push_back(tmp_size);
       nx_halos.push_back(halo->xmax_[0] - halo->xmin_[0] + 1);
       ny_halos.push_back(halo->xmax_[1] - halo->xmin_[1] + 1);
       nvx_halos.push_back(halo->xmax_[2] - halo->xmin_[2] + 1);
@@ -120,16 +249,16 @@ struct Halos{
     Kokkos::deep_copy(bc_in_max_, h_bc_in_max);
 
     // Prepare large enough buffer
-    auto max_size = std::max_element(sizes.begin(), sizes.end());
+    auto max_size = std::max_element(sizes_.begin(), sizes_.end());
     size_ = *max_size;
 
     nhalo_max_[0] = *std::max_element(nx_halos.begin(),  nx_halos.end());
     nhalo_max_[1] = *std::max_element(ny_halos.begin(),  ny_halos.end());
     nhalo_max_[2] = *std::max_element(nvx_halos.begin(), nvx_halos.end());
     nhalo_max_[3] = *std::max_element(nvy_halos.begin(), nvy_halos.end());
-    //size_ = HALO_PTS * (*max_size) * (*max_size) * (*max_size);
 
     buf_ = RealLeftView2D(name + "_buffer", size_, nb_halos_);
+    mergeLists(conf, name);
   }
 };
 
@@ -206,9 +335,24 @@ private:
   void fillHaloBoundaryCond(const Config *conf, RealView4D halo_fn);
   void fillHaloBoundaryCondOrig(const Config *conf, RealView4D halo_fn);
 
-  void applyBoundaryCondition(Config *conf, RealView4D halo_fn);
+  void packAndBoundary(Config *conf, RealView4D halo_fn);
+  void unpack(RealView4D halo_fn);
+  //void applyBoundaryCondition(Config *conf, RealView4D halo_fn);
 
   int mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std::vector<Halo>::iterator &g);
+
+  // Wrapper for MPI communication
+  void Isend(int &creq, std::vector<MPI_Request> &req);
+  
+  // Wrapper for MPI communication
+  void Irecv(int &creq, std::vector<MPI_Request> &req);
+  
+  // Wrapper for MPI communication
+  void Waitall(const int creq, std::vector<MPI_Request> &req, std::vector<MPI_Status> &stat) {
+    const int nbreq = req.size();
+    assert(creq == nbreq);
+    MPI_Waitall(nbreq, req.data(), stat.data());
+  };
 
 private:
 
@@ -276,6 +420,28 @@ struct pack {
   }
 };
 
+struct merged_pack {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  RealView1D  buf_flatten_;
+  RealLeftView2D buf_;
+  Halos       send_halos_;
+  IntView2D   flatten_map_;
+   
+  merged_pack(Halos send_halos)
+    : send_halos_(send_halos) {
+    buf_flatten_ = send_halos_.buf_flatten_;
+    buf_         = send_halos_.buf_;
+    flatten_map_ = send_halos_.flatten_map_;
+  }
+   
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    int idx_src = flatten_map_(idx, 0);
+    int ib      = flatten_map_(idx, 1);
+    buf_flatten_(idx) = buf_(idx_src, ib);
+  }
+};
+
 struct unpack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   Config         *conf_;
@@ -324,6 +490,47 @@ struct unpack {
                 ) = buf_(idx, ib);
       }
     }
+  }
+};
+
+struct merged_unpack {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  RealView4D  halo_fn_;
+  RealView1D  buf_flatten_;
+  Halos       recv_halos_;
+  RangeView2D map_;
+   
+  merged_unpack(RealView4D halo_fn, Halos recv_halos)
+    : halo_fn_(halo_fn), recv_halos_(recv_halos) {
+    buf_flatten_ = recv_halos_.buf_flatten_;
+    map_         = recv_halos_.map_;
+  }
+   
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int ix  = map_(idx, 0), iy  = map_(idx, 1);
+    const int ivx = map_(idx, 2), ivy = map_(idx, 3);
+    halo_fn_(ix, iy, ivx, ivy) = buf_flatten_(idx);
+  }
+};
+
+struct local_copy {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  RealView1D  send_buf_, recv_buf_;
+  Halos       send_halos_, recv_halos_;
+  int         send_offset_, recv_offset_;
+   
+  local_copy(Halos send_halos, Halos recv_halos)
+    : send_halos_(send_halos), recv_halos_(recv_halos) {
+    send_buf_ = send_halos_.buf_flatten_;
+    recv_buf_ = recv_halos_.buf_flatten_;
+    send_offset_ = send_halos_.offset_local_copy_;
+    recv_offset_ = recv_halos_.offset_local_copy_;
+  }
+   
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    recv_buf_(idx+recv_offset_) = send_buf_(idx+send_offset_);
   }
 };
 

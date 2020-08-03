@@ -1,12 +1,12 @@
 #!/bin/sh
 #$ -cwd               # job execution in the current directory
-#$ -l f_node=1        # Using one f_node
+#$ -l f_node=2        # Using one f_node
 #$ -l h_rt=0:10:00    # Execution time
 #$ -N parallel
 . /etc/profile.d/modules.sh # Initialize module command
 module load cuda intel
-module load openmpi/2.1.2-opa10.9-t3-thread-multiple
+module load openmpi/3.1.4-opa10.10-t3
+module load fftw
 
-export OMP_NUM_THREADS=14
-export OMP_PROC_BIND=true
-mpirun -npernode 2 -np 2 ./vlp4d.bdw_kokkos --num_threads 14 --teams 1 -f SLD10.dat
+export OMP_NUM_THREADS=7
+mpirun -npernode 4 -np 8 -x PATH -x LD_LIBRARY_PATH ./vlp4d.bdw_kokkos --num_threads 7 --teams 1 -f SLD10.dat
