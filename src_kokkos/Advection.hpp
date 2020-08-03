@@ -469,6 +469,7 @@ namespace Advection {
     int nvy = fn.extent(3);
     RealView4D fn_tmp = RealView4D("fn_tmp", nx, ny, nvx, nvy);
     Impl::deep_copy(fn_tmp, fn);
+    //Kokkos::deep_copy(fn_tmp, fn);
 
     int nx_inner  = nx  - HALO_PTS*2;
     int ny_inner  = ny  - HALO_PTS*2;

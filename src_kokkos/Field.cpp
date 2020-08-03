@@ -63,6 +63,7 @@ void field_rho(Config *conf, Distrib &comm, RealView4D fn, Efield *ef)
   });
 
   // reduction in velocity space
+  // For some reason, MPI_Allreduce is fairly slow
   int nelems = nx * ny;
   MPI_Allreduce(rho_loc.data(), rho.data(), nelems, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 };
