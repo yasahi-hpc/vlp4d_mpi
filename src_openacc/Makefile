@@ -4,7 +4,7 @@ DEVICES = $(DEVICE)
 # Nvidia P100 on Tsubame3.0 (Tokyo Tech, Japan)
 ifneq (,$(findstring p100,$(DEVICES)))
 CXX      = mpicxx
-CXXFLAGS = -O3 -ta=nvidia:cc60 -Minfo=accel -Mcudalib=cufft,cublas -std=c++11 -DENABLE_OPENACC
+CXXFLAGS = -O3 -ta=nvidia:cc60 -Minfo=accel -Mcudalib=cufft,cublas -std=c++11 -DENABLE_OPENACC -DLAYOUT_LEFT
 LDFLAGS  = -Mcudalib=cufft,cublas -ta=nvidia:cc60 -acc
 TARGET   = vlp4d.tsubame3.0_p100_openacc
 endif

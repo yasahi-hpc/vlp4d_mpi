@@ -275,7 +275,6 @@ void testcaseTSI20(Config* conf, RealView4D &fn) {
 
 void testcase_ptest_init(Config *conf, Distrib &comm, RealView4D &halo_fn) {
   const Domain *dom = &(conf->dom_);
-  Urbnode *node = comm.node();
 
   for(int ivy = node->xmin_[3]; ivy <= node->xmax_[3]; ivy++) {
     for(int ivx = node->xmin_[2]; ivx <= node->xmax_[2]; ivx++) {

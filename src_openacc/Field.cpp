@@ -32,11 +32,13 @@ void field_reduce(Config *conf, Efield *ef) {
   const Domain *dom = &(conf->dom_);
   int nx = dom->nxmax_[0], ny = dom->nxmax_[1];
   int nelems = nx * ny;
+  float64 *ptr_rho     = ef->rho_.data();
+  float64 *ptr_rho_loc = ef->rho_loc_.data();
   #if defined( ENABLE_OPENACC )
     #pragma acc data present(ef)
-    #pragma acc host_data use_device
+    #pragma acc host_data use_device(ptr_rho, ptr_rho_loc)
   #endif
-  MPI_Allreduce(ef->rho_loc_.data(), ef->rho_.data(), nelems, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(ptr_rho_loc, ptr_rho, nelems, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 }
 
 void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter) {

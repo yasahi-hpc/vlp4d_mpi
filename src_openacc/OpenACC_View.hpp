@@ -30,11 +30,8 @@ class View {
   // In case instanized with default constructor
   bool is_empty_;
 
-  // Pointer with offsets (just a reference to data_raw)
+  // Pointer
   ScalarType *data_; 
-
-  // Pointer without offset
-  ScalarType *data_raw_;
 
   // Used in offload region
   int *strides_;
@@ -52,7 +49,7 @@ public:
 
 public:
   // Default constructor, define an empty view
-  View() : total_offset_(0), size_(0), data_(nullptr), data_raw_(nullptr),
+  View() : total_offset_(0), size_(0), data_(nullptr),
            strides_meta_ {0}, offsets_meta_ {0}, is_copied_(false), is_empty_(true) {
     name_ = "empty";
   }
@@ -80,12 +77,11 @@ public:
     size_t sz = 1;
     for(auto&& dim : strides_meta_)
       sz *= dim;
-    data_raw_ = new ScalarType[sz];
-    data_ = data_raw_;
+    data_ = new ScalarType[sz];
     size_ = sz;
 
     for(int i=0; i<sz; i++) {
-      this->data_raw_[i] = 0.;
+      this->data_[i] = 0.;
     }
 
     #if defined( ENABLE_OPENACC )
@@ -129,12 +125,11 @@ public:
     size_t sz = 1;
     for(auto&& dim : strides_meta_)
       sz *= dim;
-    data_raw_ = new ScalarType[sz];
-    data_ = data_raw_;
+    data_ = new ScalarType[sz];
     size_ = sz;
    
     for(int i=0; i<sz; i++) {
-      this->data_raw_[i] = 0.;
+      this->data_[i] = 0.;
     }
    
     #if defined( ENABLE_OPENACC )
@@ -169,11 +164,10 @@ public:
     for(auto&& dim : strides_meta_)
       sz *= dim;
     size_ = sz;
-    data_raw_ = new ScalarType[sz];
-    data_     = data_raw_;
+    data_ = new ScalarType[sz];
 
     for(int i=0; i<sz; i++) {
-      this->data_raw_[i] = 0.;
+      this->data_[i] = 0.;
     }
 
     // subtract the offsets here
@@ -195,7 +189,6 @@ public:
       }
     }
     total_offset_ = offset;
-    data_ = data_raw_ + offset;
 
     #if defined( ENABLE_OPENACC )
       #pragma acc enter data copyin(this) // shallow copy this pointer
@@ -210,10 +203,10 @@ public:
         // In case, this is not a copy, deallocate the data
         if(!is_copied_) {
           #pragma acc exit data delete(data_[0:size_], strides_[0:dims_]) // detach data
-          if(data_raw_ != nullptr) delete [] data_raw_;
+          if(data_ != nullptr) delete [] data_;
           if(strides_  != nullptr) delete [] strides_;
 
-          data_raw_ = nullptr;
+          data_     = nullptr;
           strides_  = nullptr;
         }
         #pragma acc exit data delete(this) // delete this pointer
@@ -222,41 +215,27 @@ public:
   }
 
 public:
-  // Copy and assignment, implemented as deep copy
-  // Overwrite the original view, used for initialization
+  // Copy constructor performs shallow copy
   View(const View &rhs)
     : total_offset_(rhs.total_offsets()), strides_meta_(rhs.strides()), offsets_meta_(rhs.offsets()),
     is_copied_(false), is_empty_(false) {
-    // First check if the layout and datatype is identical
-    this->name_     = rhs.name() + "_copy";
-    this->strides_  = new int[rhs.dims()];
-    this->data_raw_ = new ScalarType[rhs.size()];
-    this->size_     = rhs.size();
-    this->dims_     = rhs.dims();
-    
-    // copy meta data
-    for(int i=0; i<ND; i++) {
-      this->strides_[i] = rhs.strides_ptr()[i];
-    }
-    
-    size_t sz = this->size_;
-    for(int i=0; i<sz; i++) {
-      this->data_raw_[i] = rhs.data()[i];
-    }
-    this->data_ = this->data_raw_ + this->total_offset_;
-    
-    #if defined( ENABLE_OPENACC )
-      #pragma acc enter data copyin(this) // shallow copy this pointer
-      #pragma acc enter data create(data_[0:size_], strides_[0:dims_]) // attach data (deep copy)
-      #pragma acc update device(data_[0:size_], strides_[0:dims_])
-    #endif
+    this->is_copied_ = true;
+    setSize(rhs.size());
+    setDims(rhs.dims());
+    setData(rhs.data()); // attach the data pointer
+    setStridesMeta(rhs.strides());
+    setStrides(rhs.strides_ptr()); // attach the strides pointer
+    setOffsetsMeta(rhs.offsets());
+    setTotalOffsets(rhs.total_offsets());
+    setName(rhs.name() + "_copy");
   }
 
+  // Assignmenet operator allocates the data
   View& operator=(const View &rhs) {
     this->is_empty_  = false;
     this->is_copied_ = false;
     this->strides_  = new int[rhs.dims()];
-    this->data_raw_ = new ScalarType[rhs.size()];
+    this->data_     = new ScalarType[rhs.size()];
     this->size_     = rhs.size();
     this->dims_     = rhs.dims();
     this->name_     = rhs.name() + "_copy";
@@ -269,16 +248,16 @@ public:
       this->strides_[i]      = rhs.strides_ptr()[i];
     }
     
-    size_t sz = this->size_;
-    for(int i=0; i<sz; i++) {
-      this->data_raw_[i] = rhs.data()[i];
-    }
-    this->data_ = this->data_raw_ + this->total_offset_;
+    //size_t sz = this->size_;
+    //for(int i=0; i<sz; i++) {
+    //  this->data_[i] = rhs.data()[i];
+    //}
     
     #if defined( ENABLE_OPENACC )
       #pragma acc enter data copyin(this) // shallow copy this pointer
       #pragma acc enter data create(data_[0:size_], strides_[0:dims_]) // attach data (deep copy)
-      #pragma acc update device(data_[0:size_], strides_[0:dims_])
+      #pragma acc update device(strides_[0:dims_])
+      //#pragma acc update device(data_[0:size_], strides_[0:dims_])
     #endif
     
     return *this;
@@ -317,8 +296,7 @@ public:
     this->is_copied_ = true;
     setSize(rhs.size());
     setDims(rhs.dims());
-    setDataRaw(rhs.data());
-    setData(rhs.data_ptr()); // attach the data pointer
+    setData(rhs.data()); // attach the data pointer
     setStridesMeta(rhs.strides());
     setStrides(rhs.strides_ptr()); // attach the strides pointer
     setOffsetsMeta(rhs.offsets());
@@ -333,7 +311,6 @@ public:
     std::string name     = this->name_;
     int *strides         = this->strides_;
     ScalarType *data     = this->data_;
-    ScalarType *data_raw = this->data_raw_;
     int total_offset     = this->total_offset_;
     shape_nd<ND> strides_meta = this->strides_meta_;
     shape_nd<ND> offsets_meta = this->offsets_meta_;
@@ -344,8 +321,7 @@ public:
     this->setIsCopied(rhs.is_copied());
     this->setSize(rhs.size());
     this->setDims(rhs.dims());
-    this->setDataRaw(rhs.data());
-    this->setData(rhs.data_ptr()); // attach the data pointer
+    this->setData(rhs.data()); // attach the data pointer
     this->setStridesMeta(rhs.strides());
     this->setStrides(rhs.strides_ptr()); // attach the strides pointer
     this->setOffsetsMeta(rhs.offsets());
@@ -356,7 +332,6 @@ public:
     rhs.setIsCopied(is_copied);
     rhs.setSize(size);
     rhs.setDims(dims);
-    rhs.setDataRaw(data_raw);
     rhs.setData(data); // attach the data pointer
     rhs.setStridesMeta(strides_meta);
     rhs.setStrides(strides); // attach the strides pointer
@@ -367,11 +342,11 @@ public:
 
 public:
   // Getters
+  bool is_empty() const {return is_empty_;}
   bool is_copied() const {return is_copied_;}
   size_t size() const {return size_;}
   size_t dims() const {return dims_;}
-  ScalarType *data() const {return data_raw_;}
-  ScalarType* data_ptr() const {return data_;}
+  ScalarType *data() const {return data_;}
 
   Layout layout() const {
     typedef std::integral_constant<Layout, Layout::LayoutLeft> layout_left;
@@ -394,9 +369,6 @@ public:
   inline void setIsCopied(bool is_copied) {is_copied_ = is_copied;}
   inline void setSize(size_t size) {size_ = size;}
   inline void setDims(size_t dims) {dims_ = dims;}
-  inline void setDataRaw(ScalarType *data_raw) {
-    data_raw_ = data_raw;
-  }
   inline void setData(ScalarType *data) {
     data_ = data;
     #if defined( ENABLE_OPENACC )
@@ -428,27 +400,27 @@ private:
   template <typename I0, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutLeft>>::value, ScalarType&>::type 
   access(I0 i0) const noexcept {
-    return data_[i0];
+    return data_[total_offset_ + i0];
   }
 
   template <typename I0, typename I1, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutLeft>>::value, ScalarType&>::type 
   access(I0 i0, I1 i1) const noexcept {
-    int idx = i0 + i1 * strides_[0];
+    int idx = total_offset_ + i0 + i1 * strides_[0];
     return data_[idx];
   }
 
   template <typename I0, typename I1, typename I2, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutLeft>>::value, ScalarType&>::type 
   access(I0 i0, I1 i1, I2 i2) const noexcept {
-    int idx = i0 + i1 * strides_[0] + i2 * strides_[1];
+    int idx = total_offset_ + i0 + i1 * strides_[0] + i2 * strides_[1];
     return data_[idx];
   }
 
   template <typename I0, typename I1, typename I2, typename I3, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutLeft>>::value, ScalarType&>::type 
   access(I0 i0, I1 i1, I2 i2, I3 i3) const noexcept {
-    int idx = i0 + i1 * strides_[0] + i2 * strides_[1] + i3 * strides_[2];
+    int idx = total_offset_ + i0 + i1 * strides_[0] + i2 * strides_[1] + i3 * strides_[2];
     return data_[idx];
   }
 
@@ -456,27 +428,27 @@ private:
   template <typename I0, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutRight>>::value, ScalarType&>::type 
   access(I0 i0) const noexcept {
-    return data_[i0];
+    return data_[total_offset_ + i0];
   }
 
   template <typename I0, typename I1, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutRight>>::value, ScalarType&>::type 
   access(I0 i0, I1 i1) const noexcept {
-    int idx = i1 + i0 * strides_[1];
+    int idx = total_offset_ + i1 + i0 * strides_[1];
     return data_[idx];
   }
 
   template <typename I0, typename I1, typename I2, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutRight>>::value, ScalarType&>::type 
   access(I0 i0, I1 i1, I2 i2) const noexcept {
-    int idx = i2 + i1 * strides_[2] + i0 * strides_[1];
+    int idx = total_offset_ + i2 + i1 * strides_[2] + i0 * strides_[1];
     return data_[idx];
   }
 
   template <typename I0, typename I1, typename I2, typename I3, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutRight>>::value, ScalarType&>::type 
   access(I0 i0, I1 i1, I2 i2) const noexcept {
-    int idx = i3 + i2 * strides_[3] + i1 * strides_[2] + i0 * strides_[1];
+    int idx = total_offset_ + i3 + i2 * strides_[3] + i1 * strides_[2] + i0 * strides_[1];
     return data_[idx];
   }
 };
