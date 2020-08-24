@@ -4,11 +4,11 @@
 // Prototypes
 void import(const char *f, Config *conf);
 void print(Config *conf);
-void initcase(Config *conf, RealView4D fn);
-void testcaseCYL02(Config* conf, RealView4D fn);
-void testcaseCYL05(Config* conf, RealView4D fn);
-void testcaseSLD10(Config* conf, RealView4D fn);
-void testcaseTSI20(Config* conf, RealView4D fn);
+void initcase(Config *conf, RealOffsetView4D fn);
+void testcaseCYL02(Config* conf, RealOffsetView4D fn);
+void testcaseCYL05(Config* conf, RealOffsetView4D fn);
+void testcaseSLD10(Config* conf, RealOffsetView4D fn);
+void testcaseTSI20(Config* conf, RealOffsetView4D fn);
 
 void import(const char *f, Config *conf) {
   char idcase[8], tmp;
@@ -116,7 +116,7 @@ void print(Config *conf) {
   printf("Diagnostics of fxvx : %d\n", dom->fxvx_);
 }
 
-void initcase(Config* conf, RealView4D fn) {
+void initcase(Config* conf, RealOffsetView4D fn) {
   Domain* dom = &(conf->dom_);
  
   switch(dom->idcase_) {
@@ -139,7 +139,7 @@ void initcase(Config* conf, RealView4D fn) {
   }
 }
 
-void testcaseCYL02(Config* conf, RealView4D fn) {
+void testcaseCYL02(Config* conf, RealOffsetView4D fn) {
   Domain* dom = &(conf->dom_);
   const float64 PI = M_PI;
   const float64 AMPLI = 4;
@@ -147,7 +147,7 @@ void testcaseCYL02(Config* conf, RealView4D fn) {
   const float64 cc = 0.50 * (6. / 16.);
   const float64 rc = 0.50 * (4. / 16.);
 
-  typename RealView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
 
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
@@ -173,19 +173,15 @@ void testcaseCYL02(Config* conf, RealView4D fn) {
             hx = -cos(PERIOD * ((xx + cc) / rc));
           }
           
-          int jx  = ix  - dom->local_nxmin_[0] + HALO_PTS;
-          int jy  = iy  - dom->local_nxmin_[1] + HALO_PTS;
-          int jvx = ivx - dom->local_nxmin_[2] + HALO_PTS;
-          int jvy = ivy - dom->local_nxmin_[3] + HALO_PTS;
-          h_fn(jx, jy, jvx, jvy) = (AMPLI * hx * hv);
+          h_fn(ix, iy, ivx, ivy) = (AMPLI * hx * hv);
         }
       }
     }
   }
-  Kokkos::deep_copy(fn, h_fn);
+  Kokkos::Experimental::deep_copy(fn, h_fn);
 }
 
-void testcaseCYL05(Config* conf, RealView4D fn) {
+void testcaseCYL05(Config* conf, RealOffsetView4D fn) {
   Domain * dom = &(conf->dom_);
   const float64 PI = M_PI;
   const float64 AMPLI = 4;
@@ -193,7 +189,7 @@ void testcaseCYL05(Config* conf, RealView4D fn) {
   const float64 cc = 0.50 * (6. / 16.);
   const float64 rc = 0.50 * (4. / 16.);
 
-  typename RealView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx < dom->local_nxmax_[2]; ivx++) {
       float64 vy = dom->minPhy_[3] + ivy * dom->dx_[3];
@@ -218,22 +214,18 @@ void testcaseCYL05(Config* conf, RealView4D fn) {
             hx = -cos(PERIOD * ((xx + cc) / rc));
           }
           
-          int jx  = ix  - dom->local_nxmin_[0] + HALO_PTS;
-          int jy  = iy  - dom->local_nxmin_[1] + HALO_PTS;
-          int jvx = ivx - dom->local_nxmin_[2] + HALO_PTS;
-          int jvy = ivy - dom->local_nxmin_[3] + HALO_PTS;
-          h_fn(jx, jy, jvx, jvy) = AMPLI * hx * hv;
+          h_fn(ix, iy, ivx, ivy) = AMPLI * hx * hv;
         }
       }
     }
   }
-  Kokkos::deep_copy(fn, h_fn);
+  Kokkos::Experimental::deep_copy(fn, h_fn);
 }
 
-void testcaseSLD10(Config* conf, RealView4D fn) {
+void testcaseSLD10(Config* conf, RealOffsetView4D fn) {
   Domain * dom = &(conf->dom_);
 
-  typename RealView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
       float64 vy = dom->minPhy_[3] + ivy * dom->dx_[3];
@@ -244,19 +236,15 @@ void testcaseSLD10(Config* conf, RealView4D fn) {
           float64 x = dom->minPhy_[0] + ix * dom->dx_[0];
             
           float64 sum = (vx * vx + vy * vy);
-          int jx  = ix  - dom->local_nxmin_[0] + HALO_PTS;
-          int jy  = iy  - dom->local_nxmin_[1] + HALO_PTS;
-          int jvx = ivx - dom->local_nxmin_[2] + HALO_PTS;
-          int jvy = ivy - dom->local_nxmin_[3] + HALO_PTS;
-          h_fn(jx, jy, jvx, jvy) = (1. / (2 * M_PI)) * exp(-0.5 * (sum)) * (1 + 0.05 * (cos(0.5 * x) * cos(0.5 * y)));
+          h_fn(ix, iy, ivx, ivy) = (1. / (2 * M_PI)) * exp(-0.5 * (sum)) * (1 + 0.05 * (cos(0.5 * x) * cos(0.5 * y)));
         }
       }
     }
   }
-  Kokkos::deep_copy(fn, h_fn);
+  Kokkos::Experimental::deep_copy(fn, h_fn);
 }
 
-void testcaseTSI20(Config* conf, RealView4D fn) {
+void testcaseTSI20(Config* conf, RealOffsetView4D fn) {
   Domain * dom = &(conf->dom_);
 
   float64 vd  = 2.4;
@@ -267,7 +255,7 @@ void testcaseTSI20(Config* conf, RealView4D fn) {
   float64 kx  = 0.2;
   float64 ky  = 0.2;
     
-  typename RealView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
       double vy = dom->minPhy_[3] + ivy * dom->dx_[3];
@@ -277,11 +265,7 @@ void testcaseTSI20(Config* conf, RealView4D fn) {
           double yy = dom->minPhy_[1] + iy * dom->dx_[1];
           double xx = dom->minPhy_[0] + ix * dom->dx_[0];
 
-          int jx  = ix  - dom->local_nxmin_[0] + HALO_PTS;
-          int jy  = iy  - dom->local_nxmin_[1] + HALO_PTS;
-          int jvx = ivx - dom->local_nxmin_[2] + HALO_PTS;
-          int jvy = ivy - dom->local_nxmin_[3] + HALO_PTS;
-          h_fn(jx, jy, jvx, jvy) = 
+          h_fn(ix, iy, ivx, ivy) = 
             1./(4*M_PI*vthx*vthy)*
             (1-alphax*sin(kx*xx)-alphay*sin(ky*yy))*
             (exp(-.5*(pow((vx-vd)/vthx,2)+pow(vy/vthy,2)))+
@@ -290,48 +274,36 @@ void testcaseTSI20(Config* conf, RealView4D fn) {
       }
     }
   }
-  Kokkos::deep_copy(fn, h_fn);
+  Kokkos::Experimental::deep_copy(fn, h_fn);
 }
 
 /* @brief pack some numbers into halo_fn for checking the communication routines
- *        node->xmin_[0], node->xmax_[0] = 16, 31
- *        node->xmin_[1], node->xmax_[1] = 0, 31
- *        node->xmin_[2], node->xmax_[2] = 0, 31
- *        node->xmin_[3], node->xmax_[3] = 0, 31
- *        node->xmin_[0], node->xmax_[0] = 0, 15
- *        node->xmin_[1], node->xmax_[1] = 0, 31
- *        node->xmin_[2], node->xmax_[2] = 0, 31
- *        node->xmin_[3], node->xmax_[3] = 0, 31
  */
-void testcase_ptest_init(Config *conf, Distrib &comm, RealView4D halo_fn) {
+void testcase_ptest_init(Config *conf, Distrib &comm, RealOffsetView4D halo_fn) {
   const Domain *dom = &(conf->dom_);
-  Urbnode *node = comm.node();
 
-  typename RealView4D::HostMirror h_halo_fn = Kokkos::create_mirror_view(halo_fn);
+  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::Experimental::create_mirror_view(halo_fn);
 
-  for(int ivy = node->xmin_[3]; ivy <= node->xmax_[3]; ivy++) {
-    for(int ivx = node->xmin_[2]; ivx <= node->xmax_[2]; ivx++) {
-      for(int iy = node->xmin_[1]; iy <= node->xmax_[1]; iy++) {
-        for(int ix = node->xmin_[0]; ix <= node->xmax_[0]; ix++) {
-          h_halo_fn(ix  + HALO_PTS - dom->local_nxmin_[0],
-                    iy  + HALO_PTS - dom->local_nxmin_[1], 
-                    ivx + HALO_PTS - dom->local_nxmin_[2],
-                    ivy + HALO_PTS - dom->local_nxmin_[3]) = (double)((ivy + 111 * ivx) * 111 + iy) * 111 + ix;
+  for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
+    for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
+      for(int iy = dom->local_nxmin_[1]; iy <= dom->local_nxmax_[1]; iy++) {
+        for(int ix = dom->local_nxmin_[0]; ix <= dom->local_nxmax_[0]; ix++) {
+          h_halo_fn(ix, iy, ivx, ivy) = (double)((ivy + 111 * ivx) * 111 + iy) * 111 + ix;
         }
       }
     }
   }
 
-  Kokkos::deep_copy(halo_fn, h_halo_fn);
+  Kokkos::Experimental::deep_copy(halo_fn, h_halo_fn);
 }
 
-void testcase_ptest_check(Config* conf, Distrib &comm, RealView4D halo_fn) {
+void testcase_ptest_check(Config* conf, Distrib &comm, RealOffsetView4D halo_fn) {
   Domain *dom = &(conf->dom_);
   Urbnode *node = comm.node();
   int offp = HALO_PTS - 1, offm = HALO_PTS - 1;
 
-  typename RealView4D::HostMirror h_halo_fn = Kokkos::create_mirror_view(halo_fn);
-  Kokkos::deep_copy(h_halo_fn, halo_fn);
+  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::Experimental::create_mirror_view(halo_fn);
+  Kokkos::Experimental::deep_copy(h_halo_fn, halo_fn);
   for(int ivy = node->xmin_[3] - offm; ivy <= node->xmax_[3] + offp; ivy++) {
     for(int ivx = node->xmin_[2] - offm; ivx <= node->xmax_[2] + offp; ivx++) {
       const int jvy = (dom->nxmax_[3] + ivy) % dom->nxmax_[3];
@@ -342,10 +314,7 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealView4D halo_fn) {
                                                                                                                           
         for(int ix = node->xmin_[0] - offm; ix <= node->xmax_[0] + offp; ix++) {
           const int jx = (dom->nxmax_[0] + ix) % dom->nxmax_[0];
-          double fval = h_halo_fn(ix  - node->xmin_[0] + HALO_PTS, 
-                                  iy  - node->xmin_[1] + HALO_PTS, 
-                                  ivx - node->xmin_[2] + HALO_PTS, 
-                                  ivy - node->xmin_[3] + HALO_PTS);
+          double fval = h_halo_fn(ix, iy, ivx, ivy);
           double ref = (((double)jvy + 111. * (double)jvx) * 111. + (double)jy) * 111. + (double)jx;
           double diff = fval - ref;
           if(fabs(diff) > .1) {
@@ -359,7 +328,7 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealView4D halo_fn) {
   }
 }
 
-void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers) {
+void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers) {
   Domain* dom = &conf->dom_; 
 
   import(file, conf);
@@ -369,21 +338,22 @@ void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealVie
   comm.createDecomposition(conf);
   Urbnode *mynode = comm.node();
 
-  shape_t<DIMENSION> shape_halo;
+  shape_t<DIMENSION> nxmin_halo;
+  shape_t<DIMENSION> nxmax_halo;
   for(int i=0; i<DIMENSION; i++)
-    shape_halo[i] = mynode->xmax_[i] - mynode->xmin_[i] + 2 * HALO_PTS + 1;
+    nxmin_halo[i] = mynode->xmin_[i] - HALO_PTS;
+  for(int i=0; i<DIMENSION; i++)
+    nxmax_halo[i] = mynode->xmax_[i] + HALO_PTS;
 
   // Allocate 4D data structures
-  int nx = shape_halo[0], ny = shape_halo[1], nvx = shape_halo[2], nvy = shape_halo[3];
-  fn   = RealView4D("fn",   nx, ny, nvx, nvy);
-  fnp1 = RealView4D("fnp1", nx, ny, nvx, nvy);
+  int nxmin = nxmin_halo[0], nymin = nxmin_halo[1], nvxmin = nxmin_halo[2], nvymin = nxmin_halo[3];
+  int nxmax = nxmax_halo[0], nymax = nxmax_halo[1], nvxmax = nxmax_halo[2], nvymax = nxmax_halo[3];
+  fn   = RealOffsetView4D("fn",   {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
+  fnp1 = RealOffsetView4D("fnp1", {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
 
   comm.neighboursList(conf, fn);
   comm.bookHalo(conf);
 
-  // The functions testcase_ptest_init and testcase_ptest_check are present
-  // to check the good behavior of comm_exchange_halo. These calls are also
-  // there to initiate a first round of communication as a startup phase.
   testcase_ptest_init(conf, comm, fn);
   comm.exchangeHalo(conf, fn, timers);
   testcase_ptest_check(conf, comm, fn);
@@ -397,12 +367,12 @@ void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealVie
   // allocate and initialize diagnostics data structures
   *dg = new Diags(conf);
 
-  // Initialize distribution function
-  fn = RealView4D("fn",   nx, ny, nvx, nvy); // Needed for CPU to zero init
+  // Initialize distribution function with zeros
+  fn = RealOffsetView4D("fn", {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
   initcase(conf, fn);
 }
 
-void finalize(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1, Efield **ef, Diags **dg) {
+void finalize(Efield **ef, Diags **dg) {
   // Store diagnostics
   delete *ef;
   delete *dg;

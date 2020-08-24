@@ -6,13 +6,9 @@
  *        For the sake of simplicity, all directions are, for the moment, handled with periodic boundary conditions.
  *        The Vlasov solver is based on advection's operators:
  *
- *        1D advection along x (Dt/2)
- *        1D advection along y (Dt/2)
+ *        2D advection along x, y (Dt/2)
  *        Poisson solver -> compute electric fields Ex and E
- *        1D advection along vx (Dt)
- *        1D advection along vy (Dt)
- *        1D advection along x (Dt/2)
- *        1D advection along y (Dt/2)
+ *        4D advection along x, y, vx, vy (Dt)
  *
  *        Interpolation operator within advection is Lagrange polynomial of order 5, 7 depending on a compilation flag (order 5 by default).
  *
@@ -56,12 +52,12 @@ int main (int argc, char* argv[]) {
   Kokkos::initialize (args_kokkos);
   {
     Config conf;
-    RealView4D fn, fnp1;
-    Efield *ef = NULL;
-    Diags *dg = NULL;
+    RealOffsetView4D fn, fnp1;
+    Efield *ef = nullptr;
+    Diags  *dg = nullptr;
 
     // Initialization
-    printf("reading input file %s\n", parser.file_);
+    if(comm.master()) printf("reading input file %s\n", parser.file_);
     init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers);
     int iter = 0;
 
@@ -88,8 +84,8 @@ int main (int argc, char* argv[]) {
     Kokkos::fence();
     timers[Total]->end();
     double seconds = timer.seconds();
-    printf("total time: %f s\n", seconds);
-    finalize(&conf, comm, fn, fnp1, &ef, &dg);
+    if(comm.master()) printf("total time: %f s\n", seconds);
+    finalize(&ef, &dg);
     comm.cleanup();
   }
   Kokkos::finalize();

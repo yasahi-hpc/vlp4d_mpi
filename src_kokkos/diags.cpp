@@ -27,74 +27,6 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
   RealView2D ey  = ef->ey_; 
   RealView2D rho = ef->rho_; 
 
-  // Capturing a class member causes a problem
-  // See https://github.com/kokkos/kokkos/issues/695
-  //
-  /*
-  float64 mass;
-  Scalar2<float64> ee;
-  MDPolicyType_2D moment_policy2d({{0, 0}},
-                                  {{nx, ny}},
-                                  {{TILE_SIZE0, TILE_SIZE1}}
-                                 );
-  Kokkos::parallel_reduce("moments", moment_policy2d, KOKKOS_LAMBDA (const int &ix, const int &iy, float64 &lsums) {
-    lsums += rho(ix, iy);
-  }, mass);
-
-  Kokkos::parallel_reduce("moments", moment_policy2d, KOKKOS_LAMBDA (const int &ix, const int &iy, Scalar2<float64> &lsums) {
-    const float64 eex = ex(ix, iy);
-    const float64 eey = ey(ix, iy);
-
-    lsums.x += eex * eex;
-    lsums.y += eey * eey;
-  }, ee);
-
-  float64 iter_mass = mass;
-  float64 it_nrj    = ee.x * ee.y;
-  float64 it_nrjx   = ee.x;
-  float64 it_nrjy   = ee.y;
-  */
-
-
-  //typedef Kokkos::View<float64[4], execution_space> ScalarsView;
-  //ScalarsView sums;
-  /*
-  Scalar4<float64> sums; sums.x = 0; sums.y = 0; sums.z = 0; sums.w = 0;
-  MDPolicyType_2D moment_policy2d({{0, 0}},
-                                  {{nx, ny}},
-                                  {{TILE_SIZE0, TILE_SIZE1}}
-                                 );
-
-  Kokkos::parallel_reduce("moments", moment_policy2d, KOKKOS_LAMBDA (const int &ix, const int &iy, Scalar4<float64> &lsums) {
-    const float64 eex = ex(ix, iy);
-    const float64 eey = ey(ix, iy);
-
-    lsums.x += rho(ix, iy);
-    lsums.y += eex * eex + eey * eey;
-    lsums.z += eex * eex;
-    lsums.w += eey * eey;
-  }, sums);
-  */
-  /*
-  double_3 sums; sums.x = 0; sums.y = 0; sums.z = 0;
-  MDPolicyType_2D moment_policy2d({{0, 0}},
-                                  {{nx, ny}},
-                                  {{TILE_SIZE0, TILE_SIZE1}}
-                                 );
-
-  Kokkos::parallel_reduce("moments", moment_policy2d, KOKKOS_LAMBDA (const int &ix, const int &iy, double_3 &lsums) {
-    const float64 eex = ex(ix, iy);
-    const float64 eey = ey(ix, iy);
-
-    lsums.x += rho(ix, iy);
-    lsums.y += eex * eex + eey * eey;
-    lsums.z += eex * eex;
-  }, sums);
-  */
-
-  //typename ScalarsView::HostMirror h_sums  = Kokkos::create_mirror_view(sums);
-  //Kokkos::deep_copy(h_sums, sums);
-  //
   // Use Scatter view for reduction
   typedef Kokkos::View<float64*, execution_space> ScalarsView;
   ScalarsView sums("sum", 4);
@@ -132,7 +64,7 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
   mass_(iter) = iter_mass * dom->dx_[0] * dom->dx_[1];
 }
 
-void Diags::computeL2norm(Config *conf, RealView4D fn, int iter)
+void Diags::computeL2norm(Config *conf, RealOffsetView4D fn, int iter)
 {
   const Domain *dom = &conf->dom_;
   int nx = dom->local_nx_[0], ny = dom->local_nx_[1], nvx = dom->local_nx_[2], nvy = dom->local_nx_[3];

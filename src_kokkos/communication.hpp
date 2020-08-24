@@ -45,7 +45,7 @@ struct Halo{
 // In Kokkos, we manage all the halos in a single data structure
 struct Halos{
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  RealLeftView2D buf_;
+  RealView2D buf_;
   RealView1D buf_flatten_;
   RangeView2D xmin_;
   RangeView2D xmax_;
@@ -176,10 +176,10 @@ struct Halos{
                                               nx, ny, nvx, nvy);
               
                 // h_map is used for receive buffer
-                h_map(idx_flatten, 0) = ix  - local_xstart  + HALO_PTS;
-                h_map(idx_flatten, 1) = iy  - local_ystart  + HALO_PTS;
-                h_map(idx_flatten, 2) = ivx - local_vxstart + HALO_PTS;
-                h_map(idx_flatten, 3) = ivy - local_vystart + HALO_PTS;
+                h_map(idx_flatten, 0) = ix;
+                h_map(idx_flatten, 1) = iy;
+                h_map(idx_flatten, 2) = ivx;
+                h_map(idx_flatten, 3) = ivy;
                 
                 // h_flatten_map is used for send buffer
                 h_flatten_map(idx_flatten, 0) = idx;
@@ -257,7 +257,7 @@ struct Halos{
     nhalo_max_[2] = *std::max_element(nvx_halos.begin(), nvx_halos.end());
     nhalo_max_[3] = *std::max_element(nvy_halos.begin(), nvy_halos.end());
 
-    buf_ = RealLeftView2D(name + "_buffer", size_, nb_halos_);
+    buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
     mergeLists(conf, name);
   }
 };
@@ -278,11 +278,11 @@ private:
 
   // List of halo buffers (receiving side)
   std::vector<Halo> recv_list_;
-  Halos recv_buffers_;
+  Halos *recv_buffers_;
 
   // List of halo buffers (sending side)
   std::vector<Halo> send_list_;
-  Halos send_buffers_; // May be better to use pointer for explicit deallocation
+  Halos *send_buffers_;
 
   // The local box for the very local MPI domain
   Urbnode *node_;
@@ -294,7 +294,7 @@ private:
   int nxmax_[DIMENSION];
 
 public:
-  Distrib(int &nargs, char **argv) : spline_(true) {
+  Distrib(int &nargs, char **argv) : spline_(true), recv_buffers_(nullptr), send_buffers_(nullptr) {
     int required = MPI_THREAD_SERIALIZED;
     int provided;
 
@@ -306,7 +306,8 @@ public:
 
   ~Distrib(){};
   void cleanup() {
-    // deallocate views
+    if(recv_buffers_ != nullptr) delete recv_buffers_;
+    if(send_buffers_ != nullptr) delete send_buffers_;
   }
   void finalize(){
     MPI_Finalize();
@@ -322,22 +323,65 @@ public:
 
   // Initializers
   void createDecomposition(Config *conf);
-  void neighboursList(Config *conf, RealView4D halo_fn); 
+  void neighboursList(Config *conf, RealOffsetView4D halo_fn); 
   void bookHalo(Config *conf);
 
   // Communication
-  void exchangeHalo(Config *conf, RealView4D halo_fn, std::vector<Timer*> &timers);
+  void exchangeHalo(Config *conf, RealOffsetView4D halo_fn, std::vector<Timer*> &timers);
 private:
-  void getNeighbours(const Config *conf, const RealView4Dhost halo_fn, int xrange[8],
-                     std::vector<Halo> &hlist, int lxmin[4], int lxmax[4], int count);
 
-  void fillHalo(const Config *conf, RealView4D halo_fn);
-  void fillHaloBoundaryCond(const Config *conf, RealView4D halo_fn);
-  void fillHaloBoundaryCondOrig(const Config *conf, RealView4D halo_fn);
+  template <class ViewType4D>
+  void getNeighbours(const Config *conf, const ViewType4D &halo_fn, int xrange[8],
+                     std::vector<Halo> &hlist, int lxmin[4], int lxmax[4], int count) {
+    std::vector<Halo> vhalo;
+    uint8 neighbours[nbp_];
+    uint32 nb_neib = 0;
+     
+    for(uint32 j=0; j<nbp_; j++)
+      neighbours[j] = 255;
+     
+    vhalo.clear();
+    for(int ivy = xrange[6]; ivy <= xrange[7]; ivy++) {
+      for(int ivx = xrange[4]; ivx <= xrange[5]; ivx++) {
+        for(int iy = xrange[2]; iy <= xrange[3]; iy++) {
+          for(int ix = xrange[0]; ix <= xrange[1]; ix++) {
+            const uint32 neibid = round(halo_fn(ix, iy, ivx, ivy));
 
-  void packAndBoundary(Config *conf, RealView4D halo_fn);
-  void unpack(RealView4D halo_fn);
-  //void applyBoundaryCondition(Config *conf, RealView4D halo_fn);
+            if(neighbours[neibid] == 255) {
+              Halo myneib;
+              neighbours[neibid] = nb_neib;
+              myneib.pid_     = neibid;
+              myneib.xmin_[0] = ix;
+              myneib.xmin_[1] = iy;
+              myneib.xmin_[2] = ivx;
+              myneib.xmin_[3] = ivy;
+              myneib.xmax_[0] = ix;
+              myneib.xmax_[1] = iy;
+              myneib.xmax_[2] = ivx;
+              myneib.xmax_[3] = ivy;
+              myneib.tag_ = count;
+              for(int k = 0; k < 4; k++) {
+                myneib.lxmin_[k] = lxmin[k];
+                myneib.lxmax_[k] = lxmax[k];
+              }
+              vhalo.push_back(myneib);
+              nb_neib++;
+            }//if(neighbours[neibid] == 255)
+            uint8 neighbour = neighbours[neibid];
+            vhalo[neighbour].xmax_[0] = ix;
+            vhalo[neighbour].xmax_[1] = iy;
+            vhalo[neighbour].xmax_[2] = ivx;
+            vhalo[neighbour].xmax_[3] = ivy;
+          }//for(int32 ix = xrange[0]; ix <= xrange[1]; ix++)
+        }//for(int32 iy = xrange[2]; iy <= xrange[3]; iy++)
+      }//for(int32 ivx = xrange[4]; ivx <= xrange[5]; ivx++)
+    }//for(int32 ivy = xrange[6]; ivy <= xrange[7]; ivy++)
+
+    hlist.insert(hlist.end(), vhalo.begin(), vhalo.end());
+  }
+
+  void packAndBoundary(Config *conf, RealOffsetView4D halo_fn);
+  void unpack(RealOffsetView4D halo_fn);
 
   int mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std::vector<Halo>::iterator &g);
 
@@ -364,28 +408,22 @@ private:
 struct pack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   Config         *conf_;
-  RealView4D     halo_fn_;
-  RealLeftView2D buf_;
-  Halos          send_halos_;
+  RealOffsetView4D halo_fn_;
+  RealView2D buf_;
+  Halos          *send_halos_;
   RangeView2D    xmin_, xmax_;
   int nx_max_, ny_max_, nvx_max_, nvy_max_;
-  int local_xstart_, local_ystart_, local_vxstart_, local_vystart_;
 
-  pack(Config *conf, RealView4D halo_fn, Halos send_halos)
+  pack(Config *conf, RealOffsetView4D halo_fn, Halos *send_halos)
     : conf_(conf), halo_fn_(halo_fn), send_halos_(send_halos) {
-    buf_  = send_halos_.buf_;
-    xmin_ = send_halos_.xmin_;
-    xmax_ = send_halos_.xmax_;
+    buf_  = send_halos_->buf_;
+    xmin_ = send_halos_->xmin_;
+    xmax_ = send_halos_->xmax_;
     const Domain *dom = &(conf->dom_);
     nx_max_  = dom->nxmax_[0];
     ny_max_  = dom->nxmax_[1];
     nvx_max_ = dom->nxmax_[2];
     nvy_max_ = dom->nxmax_[3];
-
-    local_xstart_  = dom->local_nxmin_[0];
-    local_ystart_  = dom->local_nxmin_[1];
-    local_vxstart_ = dom->local_nxmin_[2];
-    local_vystart_ = dom->local_nxmin_[3];
   }
 
   KOKKOS_INLINE_FUNCTION
@@ -407,12 +445,11 @@ struct pack {
       for(int ivy = 0; ivy < nvy; ivy++) {
         // Pack into halo->buf as a 1D flatten array
         // periodice boundary condition in each direction
-        // Always Layout Left
         const int jvy = ivy + ivy_min;
-        const int ix_bc  = (nx_max_  + jx)  % nx_max_  - local_xstart_  + HALO_PTS;
-        const int iy_bc  = (ny_max_  + jy)  % ny_max_  - local_ystart_  + HALO_PTS;
-        const int ivx_bc = (nvx_max_ + jvx) % nvx_max_ - local_vxstart_ + HALO_PTS;
-        const int ivy_bc = (nvy_max_ + jvy) % nvy_max_ - local_vystart_ + HALO_PTS;
+        const int ix_bc  = (nx_max_  + jx)  % nx_max_ ;
+        const int iy_bc  = (ny_max_  + jy)  % ny_max_ ;
+        const int ivx_bc = (nvx_max_ + jvx) % nvx_max_;
+        const int ivy_bc = (nvy_max_ + jvy) % nvy_max_;
         int idx = Index::coord_4D2int(ix, iy, ivx, ivy, nx, ny, nvx, nvy);
         buf_(idx, ib) = halo_fn_(ix_bc, iy_bc, ivx_bc, ivy_bc);
       }
@@ -422,16 +459,16 @@ struct pack {
 
 struct merged_pack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  RealView1D  buf_flatten_;
-  RealLeftView2D buf_;
-  Halos       send_halos_;
-  IntView2D   flatten_map_;
+  RealView1D buf_flatten_;
+  RealView2D buf_;
+  Halos      *send_halos_;
+  IntView2D  flatten_map_;
    
-  merged_pack(Halos send_halos)
+  merged_pack(Halos *send_halos)
     : send_halos_(send_halos) {
-    buf_flatten_ = send_halos_.buf_flatten_;
-    buf_         = send_halos_.buf_;
-    flatten_map_ = send_halos_.flatten_map_;
+    buf_flatten_ = send_halos_->buf_flatten_;
+    buf_         = send_halos_->buf_;
+    flatten_map_ = send_halos_->flatten_map_;
   }
    
   KOKKOS_INLINE_FUNCTION
@@ -442,68 +479,17 @@ struct merged_pack {
   }
 };
 
-struct unpack {
-  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  Config         *conf_;
-  RealView4D     halo_fn_;
-  RealLeftView2D buf_;
-  Halos          recv_halos_;
-  RangeView2D    xmin_, xmax_;
-  int local_xstart_, local_ystart_, local_vxstart_, local_vystart_;
-
-  unpack(Config *conf, RealView4D halo_fn, Halos recv_halos)
-    : conf_(conf), halo_fn_(halo_fn), recv_halos_(recv_halos) {
-    buf_  = recv_halos_.buf_;
-    xmin_ = recv_halos_.xmin_;
-    xmax_ = recv_halos_.xmax_;
-    const Domain *dom = &(conf->dom_);
-    local_xstart_  = dom->local_nxmin_[0];
-    local_ystart_  = dom->local_nxmin_[1];
-    local_vxstart_ = dom->local_nxmin_[2];
-    local_vystart_ = dom->local_nxmin_[3];
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const int ix, const int iy, const int ivx, const int ib) const {
-    const int ix_min  = xmin_(ib, 0), ix_max  = xmax_(ib, 0); 
-    const int iy_min  = xmin_(ib, 1), iy_max  = xmax_(ib, 1);
-    const int ivx_min = xmin_(ib, 2), ivx_max = xmax_(ib, 2);
-    const int ivy_min = xmin_(ib, 3), ivy_max = xmax_(ib, 3);
-
-    const int nx  = ix_max  - ix_min  + 1;
-    const int ny  = iy_max  - iy_min  + 1;
-    const int nvx = ivx_max - ivx_min + 1;
-    const int nvy = ivy_max - ivy_min + 1;
-
-    const int jx  = ix  + ix_min;
-    const int jy  = iy  + iy_min;
-    const int jvx = ivx + ivx_min;
-    if ( (jx <= ix_max) && (jy <= iy_max) && (jvx <= ivx_max) ) {
-      for(int ivy = 0; ivy < nvy; ivy++) {
-        const int jvy = ivy + ivy_min;
-        // buf_ is Always Layout Left
-        int idx = Index::coord_4D2int(ix, iy, ivx, ivy, nx, ny, nvx, nvy);
-        halo_fn_(jx  - local_xstart_  + HALO_PTS, 
-                 jy  - local_ystart_  + HALO_PTS, 
-                 jvx - local_vxstart_ + HALO_PTS,
-                 jvy - local_vystart_ + HALO_PTS
-                ) = buf_(idx, ib);
-      }
-    }
-  }
-};
-
 struct merged_unpack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  RealView4D  halo_fn_;
-  RealView1D  buf_flatten_;
-  Halos       recv_halos_;
-  RangeView2D map_;
+  RealOffsetView4D halo_fn_;
+  RealView1D       buf_flatten_;
+  Halos            *recv_halos_;
+  RangeView2D      map_;
    
-  merged_unpack(RealView4D halo_fn, Halos recv_halos)
+  merged_unpack(RealOffsetView4D halo_fn, Halos *recv_halos)
     : halo_fn_(halo_fn), recv_halos_(recv_halos) {
-    buf_flatten_ = recv_halos_.buf_flatten_;
-    map_         = recv_halos_.map_;
+    buf_flatten_ = recv_halos_->buf_flatten_;
+    map_         = recv_halos_->map_;
   }
    
   KOKKOS_INLINE_FUNCTION
@@ -517,15 +503,15 @@ struct merged_unpack {
 struct local_copy {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   RealView1D  send_buf_, recv_buf_;
-  Halos       send_halos_, recv_halos_;
+  Halos       *send_halos_, *recv_halos_;
   int         send_offset_, recv_offset_;
    
-  local_copy(Halos send_halos, Halos recv_halos)
+  local_copy(Halos *send_halos, Halos *recv_halos)
     : send_halos_(send_halos), recv_halos_(recv_halos) {
-    send_buf_ = send_halos_.buf_flatten_;
-    recv_buf_ = recv_halos_.buf_flatten_;
-    send_offset_ = send_halos_.offset_local_copy_;
-    recv_offset_ = recv_halos_.offset_local_copy_;
+    send_buf_ = send_halos_->buf_flatten_;
+    recv_buf_ = recv_halos_->buf_flatten_;
+    send_offset_ = send_halos_->offset_local_copy_;
+    recv_offset_ = recv_halos_->offset_local_copy_;
   }
    
   KOKKOS_INLINE_FUNCTION
@@ -545,12 +531,12 @@ struct local_copy {
  */
 struct boundary_condition {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  Config         *conf_;
-  RealView4D     halo_fn_;
-  RealLeftView2D buf_;
-  Halos          send_halos_;
-  RangeView2D    xmin_, xmax_;
-  RangeView2D    bc_in_min_, bc_in_max_;
+  Config           *conf_;
+  RealOffsetView4D halo_fn_;
+  RealView2D       buf_;
+  Halos            *send_halos_;
+  RangeView2D      xmin_, xmax_;
+  RangeView2D      bc_in_min_, bc_in_max_;
 
   float64 alpha_;
   // Global domain size
@@ -563,13 +549,13 @@ struct boundary_condition {
   // Pseudo constants
   int bc_sign_[8];
 
-  boundary_condition(Config *conf, RealView4D halo_fn, Halos send_halos)
+  boundary_condition(Config *conf, RealOffsetView4D halo_fn, Halos *send_halos)
     : conf_(conf), halo_fn_(halo_fn), send_halos_(send_halos) {
-    buf_  = send_halos_.buf_;
-    xmin_ = send_halos_.xmin_;
-    xmax_ = send_halos_.xmax_;
-    bc_in_min_ = send_halos_.bc_in_min_;
-    bc_in_max_ = send_halos_.bc_in_max_;
+    buf_  = send_halos_->buf_;
+    xmin_ = send_halos_->xmin_;
+    xmax_ = send_halos_->xmax_;
+    bc_in_min_ = send_halos_->bc_in_min_;
+    bc_in_max_ = send_halos_->bc_in_max_;
     const Domain *dom = &(conf->dom_);
     nx_  = dom->nxmax_[0];
     ny_  = dom->nxmax_[1];
@@ -637,10 +623,10 @@ struct boundary_condition {
                 float64 fsum = 0.;
                 float64 alphap1 = alpha_;
                 for(int j1 = 1; j1 <= MMAX; j1++) {
-                  fsum += halo_fn_(rx  + sign1[0] * j1 - local_xstart_  + HALO_PTS, 
-                                   ry  + sign1[1] * j1 - local_ystart_  + HALO_PTS,
-                                   rvx + sign1[2] * j1 - local_vxstart_ + HALO_PTS,
-                                   rvy + sign1[3] * j1 - local_vystart_ + HALO_PTS) * alphap1;
+                  fsum += halo_fn_(rx  + sign1[0] * j1, 
+                                   ry  + sign1[1] * j1,
+                                   rvx + sign1[2] * j1,
+                                   rvy + sign1[3] * j1) * alphap1;
                   alphap1 *= alpha_;
                 }
                 int idx = Index::coord_4D2int(jx  - halo_min[0], 
@@ -684,10 +670,10 @@ struct boundary_condition {
                     for(int j2 = 1; j2 <= MMAX; j2++) {
                       float64 alphap1 = alpha_ * alphap2;  
                       for(int j1 = 1; j1 <= MMAX; j1++) {
-                        fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2 - local_xstart_  + HALO_PTS, 
-                                         ry  + sign1[1] * j1 + sign2[1] * j2 - local_ystart_  + HALO_PTS,
-                                         rvx + sign1[2] * j1 + sign2[2] * j2 - local_vxstart_ + HALO_PTS,
-                                         rvy + sign1[3] * j1 + sign2[3] * j2 - local_vystart_ + HALO_PTS) * alphap1;
+                        fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2, 
+                                         ry  + sign1[1] * j1 + sign2[1] * j2,
+                                         rvx + sign1[2] * j1 + sign2[2] * j2,
+                                         rvy + sign1[3] * j1 + sign2[3] * j2) * alphap1;
                         alphap1 *= alpha_;
                       }
                       alphap2 *= alpha_;
@@ -739,10 +725,10 @@ struct boundary_condition {
                         for(int j2 = 1; j2 <= MMAX; j2++) {
                           float64 alphap1 = alpha_ * alphap2;
                           for(int j1 = 1; j1 <= MMAX; j1++) {
-                            fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2 + sign3[0] * j3 - local_xstart_  + HALO_PTS, 
-                                             ry  + sign1[1] * j1 + sign2[1] * j2 + sign3[1] * j3 - local_ystart_  + HALO_PTS,
-                                             rvx + sign1[2] * j1 + sign2[2] * j2 + sign3[2] * j3 - local_vxstart_ + HALO_PTS,
-                                             rvy + sign1[3] * j1 + sign2[3] * j2 + sign3[3] * j3 - local_vystart_ + HALO_PTS) * alphap1;
+                            fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2 + sign3[0] * j3, 
+                                             ry  + sign1[1] * j1 + sign2[1] * j2 + sign3[1] * j3,
+                                             rvx + sign1[2] * j1 + sign2[2] * j2 + sign3[2] * j3,
+                                             rvy + sign1[3] * j1 + sign2[3] * j2 + sign3[3] * j3) * alphap1;
                             alphap1 *= alpha_;
                           }
                           alphap2 *= alpha_;
@@ -803,10 +789,10 @@ struct boundary_condition {
                             for(int j2 = 1; j2 <= MMAX; j2++) {
                               float64 alphap1 = alpha_ * alphap2;
                               for(int j1 = 1; j1 <= MMAX; j1++) {
-                                fsum += halo_fn_(rx  + sign1[0] * j1 - local_xstart_  + HALO_PTS, 
-                                                 ry  + sign2[1] * j2 - local_ystart_  + HALO_PTS,
-                                                 rvx + sign3[2] * j3 - local_vxstart_ + HALO_PTS,
-                                                 rvy + sign4[3] * j4 - local_vystart_ + HALO_PTS) * alphap1;
+                                fsum += halo_fn_(rx  + sign1[0] * j1, 
+                                                 ry  + sign2[1] * j2,
+                                                 rvx + sign3[2] * j3,
+                                                 rvy + sign4[3] * j4) * alphap1;
                                 alphap1 *= alpha_;
                               }
                               alphap2 *= alpha_;
@@ -881,10 +867,10 @@ struct boundary_condition {
             float64 fsum = 0.;
             float64 alphap1 = alpha_;
             for(int j1 = 1; j1 <= MMAX; j1++) {
-              fsum += halo_fn_(rx  + sign1[0] * j1 - local_xstart_  + HALO_PTS, 
-                               ry  + sign1[1] * j1 - local_ystart_  + HALO_PTS,
-                               rvx + sign1[2] * j1 - local_vxstart_ + HALO_PTS,
-                               rvy + sign1[3] * j1 - local_vystart_ + HALO_PTS) * alphap1;
+              fsum += halo_fn_(rx  + sign1[0] * j1, 
+                               ry  + sign1[1] * j1,
+                               rvx + sign1[2] * j1,
+                               rvy + sign1[3] * j1) * alphap1;
               alphap1 *= alpha_;
             }
             int idx = Index::coord_4D2int(jx  - halo_min[0], 
@@ -926,10 +912,10 @@ struct boundary_condition {
                 for(int j2 = 1; j2 <= MMAX; j2++) {
                   float64 alphap1 = alpha_ * alphap2;  
                   for(int j1 = 1; j1 <= MMAX; j1++) {
-                    fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2 - local_xstart_  + HALO_PTS, 
-                                     ry  + sign1[1] * j1 + sign2[1] * j2 - local_ystart_  + HALO_PTS,
-                                     rvx + sign1[2] * j1 + sign2[2] * j2 - local_vxstart_ + HALO_PTS,
-                                     rvy + sign1[3] * j1 + sign2[3] * j2 - local_vystart_ + HALO_PTS) * alphap1;
+                    fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2, 
+                                     ry  + sign1[1] * j1 + sign2[1] * j2,
+                                     rvx + sign1[2] * j1 + sign2[2] * j2,
+                                     rvy + sign1[3] * j1 + sign2[3] * j2) * alphap1;
                     alphap1 *= alpha_;
                   }
                   alphap2 *= alpha_;
@@ -980,10 +966,10 @@ struct boundary_condition {
                     for(int j2 = 1; j2 <= MMAX; j2++) {
                       float64 alphap1 = alpha_ * alphap2;
                       for(int j1 = 1; j1 <= MMAX; j1++) {
-                        fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2 + sign3[0] * j3 - local_xstart_  + HALO_PTS, 
-                                         ry  + sign1[1] * j1 + sign2[1] * j2 + sign3[1] * j3 - local_ystart_  + HALO_PTS,
-                                         rvx + sign1[2] * j1 + sign2[2] * j2 + sign3[2] * j3 - local_vxstart_ + HALO_PTS,
-                                         rvy + sign1[3] * j1 + sign2[3] * j2 + sign3[3] * j3 - local_vystart_ + HALO_PTS) * alphap1;
+                        fsum += halo_fn_(rx  + sign1[0] * j1 + sign2[0] * j2 + sign3[0] * j3, 
+                                         ry  + sign1[1] * j1 + sign2[1] * j2 + sign3[1] * j3,
+                                         rvx + sign1[2] * j1 + sign2[2] * j2 + sign3[2] * j3,
+                                         rvy + sign1[3] * j1 + sign2[3] * j2 + sign3[3] * j3) * alphap1;
                         alphap1 *= alpha_;
                       }
                       alphap2 *= alpha_;
@@ -1042,10 +1028,10 @@ struct boundary_condition {
                         for(int j2 = 1; j2 <= MMAX; j2++) {
                           float64 alphap1 = alpha_ * alphap2;
                           for(int j1 = 1; j1 <= MMAX; j1++) {
-                            fsum += halo_fn_(rx  + sign1[0] * j1 - local_xstart_  + HALO_PTS, 
-                                             ry  + sign2[1] * j2 - local_ystart_  + HALO_PTS,
-                                             rvx + sign3[2] * j3 - local_vxstart_ + HALO_PTS,
-                                             rvy + sign4[3] * j4 - local_vystart_ + HALO_PTS) * alphap1;
+                            fsum += halo_fn_(rx  + sign1[0] * j1, 
+                                             ry  + sign2[1] * j2,
+                                             rvx + sign3[2] * j3,
+                                             rvy + sign4[3] * j4) * alphap1;
                             alphap1 *= alpha_;
                           }
                           alphap2 *= alpha_;
@@ -1068,143 +1054,6 @@ struct boundary_condition {
         } // for(int k2 = 2; k2 < 4; k2++)
       } // for(int k1 = 0; k1 < 8; k1++)
     } // if(orcsum > 3)
-  }
-};
-
-struct boundary_condition_orig {
-  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  Config         *conf_;
-  RealView4D     halo_fn_;
-  RealLeftView2D buf_;
-  Halos          send_halos_;
-  RangeView2D    xmin_, xmax_;
-  RangeView2D    lxmin_, lxmax_;
-
-  float64 alpha_;
-  // Global domain size
-  int nx_, ny_, nvx_, nvy_;
-
-  // Local domain min and max
-  int local_xstart_, local_ystart_, local_vxstart_, local_vystart_;
-
-  boundary_condition_orig(Config *conf, RealView4D halo_fn, Halos send_halos)
-    : conf_(conf), halo_fn_(halo_fn), send_halos_(send_halos) {
-    buf_  = send_halos_.buf_;
-    xmin_ = send_halos_.xmin_;
-    xmax_ = send_halos_.xmax_;
-    lxmin_ = send_halos_.lxmin_;
-    lxmax_ = send_halos_.lxmax_;
-    const Domain *dom = &(conf->dom_);
-    nx_  = dom->nxmax_[0];
-    ny_  = dom->nxmax_[1];
-    nvx_ = dom->nxmax_[2];
-    nvy_ = dom->nxmax_[3];
-    alpha_ = sqrt(3) - 2;
-
-    // Without halo region
-    local_xstart_  = dom->local_nxmin_[0];
-    local_ystart_  = dom->local_nxmin_[1];
-    local_vxstart_ = dom->local_nxmin_[2];
-    local_vystart_ = dom->local_nxmin_[3];
-  }
-
-  /* @ packed_values[0,1,2,3]: check, mini, maxi, r
-   * @ min: si = halo->lxmin_ - 3
-   * @ max: ei = halo->lxmax_ + 3
-   * @ n:   dg = dom.nxmax_
-   */
-  KOKKOS_INLINE_FUNCTION
-  void check(int *packed_values, const int idx, const int min, const int max, const int n) const {
-    int check, mini, maxi, r;
-    if(idx == min) {
-      check = -1;
-      mini  = 1;
-      maxi  = MMAX;
-      r     = (n + idx + 1) % n;
-    } else if(idx == max) {
-      check = -1;
-      mini  = 1;
-      maxi  = MMAX;
-      r     = (n + idx - 1) % n;
-    } else {
-      check = 0;
-      mini  = 0;
-      maxi  = 0;
-      r     = (n + idx) % n;
-    }
-    packed_values[0] = check;
-    packed_values[1] = mini;
-    packed_values[2] = maxi;
-    packed_values[3] = r;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const int ix, const int iy, const int ivx, const int ib) const {
-    const int ix_min  = xmin_(ib, 0), ix_max  = xmin_(ib, 0); 
-    const int iy_min  = xmin_(ib, 1), iy_max  = xmax_(ib, 1);
-    const int ivx_min = xmin_(ib, 2), ivx_max = xmax_(ib, 2);
-    const int ivy_min = xmin_(ib, 3), ivy_max = xmax_(ib, 3);
-    const int local_xmin  = lxmin_(ib, 0), local_xmax  = lxmax_(ib, 0);
-    const int local_ymin  = lxmin_(ib, 1), local_ymax  = lxmax_(ib, 1);
-    const int local_vxmin = lxmin_(ib, 2), local_vxmax = lxmax_(ib, 2);
-    const int local_vymin = lxmin_(ib, 3), local_vymax = lxmax_(ib, 3);
-
-    //const int halo_nx  = ix_max  - ix_min  + 1;
-    //const int halo_ny  = iy_max  - iy_min  + 1;
-    //const int halo_nvx = ivx_max - ivx_min + 1;
-    const int halo_nvy = ivy_max - ivy_min + 1;
-
-    const int jx  = ix  + ix_min;
-    const int jy  = iy  + iy_min;
-    const int jvx = ivx + ivx_min;
-    int packed_values_x[4];
-    int packed_values_y[4];
-    int packed_values_vx[4];
-    int packed_values_vy[4];
-
-    if ( (jx <= ix_max) && (jy <= iy_max) && (jvx <= ivx_max) ) {
-      check(packed_values_x,  ix,  local_xmin,  local_xmax, nx_);
-      check(packed_values_y,  iy,  local_ymin,  local_ymax, ny_);
-      check(packed_values_vx, ivx, local_vxmin, local_vxmax, nvx_);
-      int check_x  = packed_values_x[0],  mini_x  = packed_values_x[1],  maxi_x  = packed_values_x[2],  rx  = packed_values_x[3];
-      int check_y  = packed_values_y[0],  mini_y  = packed_values_y[1],  maxi_y  = packed_values_y[2],  ry  = packed_values_y[3];
-      int check_vx = packed_values_vx[0], mini_vx = packed_values_vx[1], maxi_vx = packed_values_vx[2], rvx = packed_values_vx[3];
-      for(int ivy = 0; ivy < halo_nvy; ivy++) {
-        check(packed_values_vy, ivy, local_vymin, local_vymax, nvy_);
-        int check_vy = packed_values_vy[0], mini_vy = packed_values_vy[1], maxi_vy = packed_values_vy[2], rvy = packed_values_vy[3];
-
-        if(check_x != 0 || check_y != 0 || check_vx != 0 || check_vy != 0) {
-          float64 fsum = 0.;
-          for(int j3=mini_vy; j3<maxi_vy; j3++) {
-            int jvy = rvy + check_vy * j3 + HALO_PTS;
-            for(int j2=mini_vx; j2<maxi_vx; j2++) {
-              int jvx = rvx + check_vx * j2 + HALO_PTS;
-              for(int j1=mini_y; j1<maxi_y; j1++) {
-                int jy = ry + check_y * j1 + HALO_PTS;
-                for(int j0=mini_x; j0<maxi_x; j0++) {
-                  float64 alphapow = pow(alpha_, j0 + j1 + j2 + j3);
-                  /*
-                   * assert(sn[0] <= jx && jx <= en[0]);
-                   * assert(sn[1] <= jy && jy <= en[1]);
-                   * assert(sn[2] <= jvx && jvx <= en[2]);
-                   * assert(sn[3] <= jvy && jvy <= en[3]);
-                   */
-                  int jx = rx + check_x * j0 + HALO_PTS;
-                  fsum += halo_fn_(jx, jy, jvx, jvy) * alphapow;
-                }
-              }
-            }
-          }
-          #ifdef ORIGALGO
-            int idx = Index::coord_4D2int(ix, iy, ivx, ivy, halo_nx, halo_ny, halo_nvx, halo_nvy);
-            buf_(idx, ib) = fsum;
-         /*
-          #else
-          */
-          #endif
-        } // if(check_x != 0 || check_y != 0 || check_vx != 0 || check_vy != 0)
-      }
-    }
   }
 };
 

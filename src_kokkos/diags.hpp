@@ -22,27 +22,8 @@ public:
   virtual ~Diags();
 
   void compute(Config *conf, Efield *ef, int iter);
-  void computeL2norm(Config *conf, RealView4D fn, int iter);
+  void computeL2norm(Config *conf, RealOffsetView4D fn, int iter);
   void save(Config *conf, Distrib &comm, int cur_iter);
 };
-
-
-/*
-struct Moment {
-  Config *conf_;
-  Efield *ef_;
-  int s_nxmax_, s_nymax_;
-
-  Moment(Config *conf, Efield *ef)
-    : conf_(conf), ef_(ef) {
-    const Domain *dom = &(conf_->dom_);
-    s_nxmax  = dom->nxmax_[0];
-    s_nymax  = dom->nxmax_[1];
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const int ix, const int iy, )
-};
-*/
 
 #endif
