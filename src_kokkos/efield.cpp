@@ -2,7 +2,7 @@
 
 // field init
 Efield::Efield(Config *conf, shape_t<2> dim)
-{
+  : fft_(nullptr) {
   rho_     = RealView2D("rho", dim[0], dim[1]);
   rho_loc_ = RealView2D("rho_loc", dim[0], dim[1]);
   ex_      = RealView2D("ex",  dim[0], dim[1]);
@@ -35,13 +35,11 @@ Efield::Efield(Config *conf, shape_t<2> dim)
   Kokkos::deep_copy(filter_, h_filter);
 }
 
-Efield::~Efield()
-{
-  if(fft_ != NULL) delete fft_;
+Efield::~Efield() {
+  if(fft_ != nullptr) delete fft_;
 }
 
-void Efield::solve_poisson_fftw(float64 xmax, float64 ymax)
-{
+void Efield::solve_poisson_fftw(float64 xmax, float64 ymax) {
   float64 kx0 = 2 * M_PI / xmax;
   float64 ky0 = 2 * M_PI / ymax;
   int nx1  = fft_->nx1_;

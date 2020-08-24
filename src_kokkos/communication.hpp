@@ -180,10 +180,6 @@ struct Halos{
                 h_map(idx_flatten, 1) = iy;
                 h_map(idx_flatten, 2) = ivx;
                 h_map(idx_flatten, 3) = ivy;
-                //h_map(idx_flatten, 0) = ix  - local_xstart  + HALO_PTS;
-                //h_map(idx_flatten, 1) = iy  - local_ystart  + HALO_PTS;
-                //h_map(idx_flatten, 2) = ivx - local_vxstart + HALO_PTS;
-                //h_map(idx_flatten, 3) = ivy - local_vystart + HALO_PTS;
                 
                 // h_flatten_map is used for send buffer
                 h_flatten_map(idx_flatten, 0) = idx;
@@ -282,11 +278,11 @@ private:
 
   // List of halo buffers (receiving side)
   std::vector<Halo> recv_list_;
-  Halos recv_buffers_;
+  Halos *recv_buffers_;
 
   // List of halo buffers (sending side)
   std::vector<Halo> send_list_;
-  Halos send_buffers_; // May be better to use pointer for explicit deallocation
+  Halos *send_buffers_;
 
   // The local box for the very local MPI domain
   Urbnode *node_;
@@ -298,7 +294,7 @@ private:
   int nxmax_[DIMENSION];
 
 public:
-  Distrib(int &nargs, char **argv) : spline_(true) {
+  Distrib(int &nargs, char **argv) : spline_(true), recv_buffers_(nullptr), send_buffers_(nullptr) {
     int required = MPI_THREAD_SERIALIZED;
     int provided;
 
@@ -310,7 +306,8 @@ public:
 
   ~Distrib(){};
   void cleanup() {
-    // deallocate views
+    if(recv_buffers_ != nullptr) delete recv_buffers_;
+    if(send_buffers_ != nullptr) delete send_buffers_;
   }
   void finalize(){
     MPI_Finalize();
@@ -380,7 +377,6 @@ private:
       }//for(int32 ivx = xrange[4]; ivx <= xrange[5]; ivx++)
     }//for(int32 ivy = xrange[6]; ivy <= xrange[7]; ivy++)
 
-    // [Y. A] Comment, can it be a very large array?
     hlist.insert(hlist.end(), vhalo.begin(), vhalo.end());
   }
 
@@ -414,15 +410,15 @@ struct pack {
   Config         *conf_;
   RealOffsetView4D halo_fn_;
   RealView2D buf_;
-  Halos          send_halos_;
+  Halos          *send_halos_;
   RangeView2D    xmin_, xmax_;
   int nx_max_, ny_max_, nvx_max_, nvy_max_;
 
-  pack(Config *conf, RealOffsetView4D halo_fn, Halos send_halos)
+  pack(Config *conf, RealOffsetView4D halo_fn, Halos *send_halos)
     : conf_(conf), halo_fn_(halo_fn), send_halos_(send_halos) {
-    buf_  = send_halos_.buf_;
-    xmin_ = send_halos_.xmin_;
-    xmax_ = send_halos_.xmax_;
+    buf_  = send_halos_->buf_;
+    xmin_ = send_halos_->xmin_;
+    xmax_ = send_halos_->xmax_;
     const Domain *dom = &(conf->dom_);
     nx_max_  = dom->nxmax_[0];
     ny_max_  = dom->nxmax_[1];
@@ -463,16 +459,16 @@ struct pack {
 
 struct merged_pack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  RealView1D  buf_flatten_;
+  RealView1D buf_flatten_;
   RealView2D buf_;
-  Halos       send_halos_;
-  IntView2D   flatten_map_;
+  Halos      *send_halos_;
+  IntView2D  flatten_map_;
    
-  merged_pack(Halos send_halos)
+  merged_pack(Halos *send_halos)
     : send_halos_(send_halos) {
-    buf_flatten_ = send_halos_.buf_flatten_;
-    buf_         = send_halos_.buf_;
-    flatten_map_ = send_halos_.flatten_map_;
+    buf_flatten_ = send_halos_->buf_flatten_;
+    buf_         = send_halos_->buf_;
+    flatten_map_ = send_halos_->flatten_map_;
   }
    
   KOKKOS_INLINE_FUNCTION
@@ -486,14 +482,14 @@ struct merged_pack {
 struct merged_unpack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   RealOffsetView4D halo_fn_;
-  RealView1D  buf_flatten_;
-  Halos       recv_halos_;
-  RangeView2D map_;
+  RealView1D       buf_flatten_;
+  Halos            *recv_halos_;
+  RangeView2D      map_;
    
-  merged_unpack(RealOffsetView4D halo_fn, Halos recv_halos)
+  merged_unpack(RealOffsetView4D halo_fn, Halos *recv_halos)
     : halo_fn_(halo_fn), recv_halos_(recv_halos) {
-    buf_flatten_ = recv_halos_.buf_flatten_;
-    map_         = recv_halos_.map_;
+    buf_flatten_ = recv_halos_->buf_flatten_;
+    map_         = recv_halos_->map_;
   }
    
   KOKKOS_INLINE_FUNCTION
@@ -507,15 +503,15 @@ struct merged_unpack {
 struct local_copy {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   RealView1D  send_buf_, recv_buf_;
-  Halos       send_halos_, recv_halos_;
+  Halos       *send_halos_, *recv_halos_;
   int         send_offset_, recv_offset_;
    
-  local_copy(Halos send_halos, Halos recv_halos)
+  local_copy(Halos *send_halos, Halos *recv_halos)
     : send_halos_(send_halos), recv_halos_(recv_halos) {
-    send_buf_ = send_halos_.buf_flatten_;
-    recv_buf_ = recv_halos_.buf_flatten_;
-    send_offset_ = send_halos_.offset_local_copy_;
-    recv_offset_ = recv_halos_.offset_local_copy_;
+    send_buf_ = send_halos_->buf_flatten_;
+    recv_buf_ = recv_halos_->buf_flatten_;
+    send_offset_ = send_halos_->offset_local_copy_;
+    recv_offset_ = recv_halos_->offset_local_copy_;
   }
    
   KOKKOS_INLINE_FUNCTION
@@ -535,12 +531,12 @@ struct local_copy {
  */
 struct boundary_condition {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
-  Config         *conf_;
+  Config           *conf_;
   RealOffsetView4D halo_fn_;
-  RealView2D buf_;
-  Halos          send_halos_;
-  RangeView2D    xmin_, xmax_;
-  RangeView2D    bc_in_min_, bc_in_max_;
+  RealView2D       buf_;
+  Halos            *send_halos_;
+  RangeView2D      xmin_, xmax_;
+  RangeView2D      bc_in_min_, bc_in_max_;
 
   float64 alpha_;
   // Global domain size
@@ -553,13 +549,13 @@ struct boundary_condition {
   // Pseudo constants
   int bc_sign_[8];
 
-  boundary_condition(Config *conf, RealOffsetView4D halo_fn, Halos send_halos)
+  boundary_condition(Config *conf, RealOffsetView4D halo_fn, Halos *send_halos)
     : conf_(conf), halo_fn_(halo_fn), send_halos_(send_halos) {
-    buf_  = send_halos_.buf_;
-    xmin_ = send_halos_.xmin_;
-    xmax_ = send_halos_.xmax_;
-    bc_in_min_ = send_halos_.bc_in_min_;
-    bc_in_max_ = send_halos_.bc_in_max_;
+    buf_  = send_halos_->buf_;
+    xmin_ = send_halos_->xmin_;
+    xmax_ = send_halos_->xmax_;
+    bc_in_min_ = send_halos_->bc_in_min_;
+    bc_in_max_ = send_halos_->bc_in_max_;
     const Domain *dom = &(conf->dom_);
     nx_  = dom->nxmax_[0];
     ny_  = dom->nxmax_[1];

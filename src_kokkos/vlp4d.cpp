@@ -53,9 +53,8 @@ int main (int argc, char* argv[]) {
   {
     Config conf;
     RealOffsetView4D fn, fnp1;
-    //RealView4D fn, fnp1;
     Efield *ef = nullptr;
-    Diags *dg  = nullptr;
+    Diags  *dg = nullptr;
 
     // Initialization
     if(comm.master()) printf("reading input file %s\n", parser.file_);

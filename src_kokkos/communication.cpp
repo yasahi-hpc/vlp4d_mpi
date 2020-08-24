@@ -353,8 +353,10 @@ void Distrib::bookHalo(Config *conf) {
 
   // Copy into Kokkos suited structure
   // Halo size large enough to store 
-  send_buffers_.set(conf, send_list_, "send", nbp_, pid_);
-  recv_buffers_.set(conf, recv_list_, "recv", nbp_, pid_);
+  send_buffers_ = new Halos();
+  recv_buffers_ = new Halos();
+  send_buffers_->set(conf, send_list_, "send", nbp_, pid_);
+  recv_buffers_->set(conf, recv_list_, "recv", nbp_, pid_);
 
   fprintf(stderr, "[%d] Number of halo blocs = %lu\n", pid_, send_list_.size());
 }
@@ -402,33 +404,33 @@ int Distrib::mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std
 }
 
 void Distrib::Isend(int &creq, std::vector<MPI_Request> &req) {
-  int nb_halos = send_buffers_.nb_merged_halos_;
-  int size_local_copy = send_buffers_.merged_size(pid_);
+  int nb_halos = send_buffers_->nb_merged_halos_;
+  int size_local_copy = send_buffers_->merged_size(pid_);
   for(int i = 0; i < nb_halos; i++) {
     if(i == pid_) {
       // Then local copy
       Kokkos::parallel_for("copy", size_local_copy, local_copy(send_buffers_, recv_buffers_));
     } else {
       // Then MPI communication
-      float64 *head  = send_buffers_.head(i);
-      const int size = send_buffers_.merged_size(i);
-      const int pid  = send_buffers_.merged_pid(i);
-      const int tag  = send_buffers_.merged_tag(i);
+      float64 *head  = send_buffers_->head(i);
+      const int size = send_buffers_->merged_size(i);
+      const int pid  = send_buffers_->merged_pid(i);
+      const int tag  = send_buffers_->merged_tag(i);
       MPI_Isend(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
     }
   }
 }
      
 void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
-  int nb_halos = recv_buffers_.nb_merged_halos_;
-  int size_local_copy = recv_buffers_.merged_size(pid_);
+  int nb_halos = recv_buffers_->nb_merged_halos_;
+  int size_local_copy = recv_buffers_->merged_size(pid_);
   for(int i = 0; i < nb_halos; i++) {
     if(i != pid_) {
       // Then MPI communication
-      float64 *head  = recv_buffers_.head(i);
-      const int size = recv_buffers_.merged_size(i);
-      const int pid  = recv_buffers_.merged_pid(i);
-      const int tag  = recv_buffers_.merged_tag(i);
+      float64 *head  = recv_buffers_->head(i);
+      const int size = recv_buffers_->merged_size(i);
+      const int pid  = recv_buffers_->merged_pid(i);
+      const int tag  = recv_buffers_->merged_tag(i);
       MPI_Irecv(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
     }
   }
@@ -444,12 +446,12 @@ void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
  */
 void Distrib::packAndBoundary(Config *conf, RealOffsetView4D halo_fn) {
   if(spline_) {
-    const int nx_send  = send_buffers_.nhalo_max_[0];
-    const int ny_send  = send_buffers_.nhalo_max_[1];
-    const int nvx_send = send_buffers_.nhalo_max_[2];
-    const int nvy_send = send_buffers_.nhalo_max_[3];
-    const int nb_send_halos = send_buffers_.nb_halos_;
-    const int total_size = send_buffers_.total_size_;
+    const int nx_send  = send_buffers_->nhalo_max_[0];
+    const int ny_send  = send_buffers_->nhalo_max_[1];
+    const int nvx_send = send_buffers_->nhalo_max_[2];
+    const int nvy_send = send_buffers_->nhalo_max_[3];
+    const int nb_send_halos = send_buffers_->nb_halos_;
+    const int total_size = send_buffers_->total_size_;
     MDPolicyType_4D mdpolicy4d({{0, 0, 0, 0}},
                                {{nx_send, ny_send, nvx_send, nb_send_halos}},
                                {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
@@ -460,7 +462,6 @@ void Distrib::packAndBoundary(Config *conf, RealOffsetView4D halo_fn) {
     #if defined( KOKKOS_ENABLE_CUDA )
       Kokkos::parallel_for("boundary_condition", mdpolicy4d, boundary_condition(conf, halo_fn, send_buffers_));
     #else
-      // For some reason, 4d policy does not work on CPUs
       Kokkos::parallel_for("boundary_condition", nb_send_halos, boundary_condition(conf, halo_fn, send_buffers_));
     #endif
     Kokkos::parallel_for("merged_pack", total_size, merged_pack(send_buffers_));
@@ -468,7 +469,7 @@ void Distrib::packAndBoundary(Config *conf, RealOffsetView4D halo_fn) {
 }
 
 void Distrib::unpack(RealOffsetView4D halo_fn) {
-  int total_size = recv_buffers_.total_size_;
+  int total_size = recv_buffers_->total_size_;
   Kokkos::parallel_for("merged_unpack", total_size, merged_unpack(halo_fn, recv_buffers_));
 }
 
@@ -487,7 +488,7 @@ void Distrib::exchangeHalo(Config *conf, RealOffsetView4D halo_fn, std::vector<T
   std::vector<MPI_Request> req;
   std::vector<MPI_Status>  stat;
   int nbreq = 0, creq = 0;
-  nbreq = recv_buffers_.nb_reqs() + send_buffers_.nb_reqs();
+  nbreq = recv_buffers_->nb_reqs() + send_buffers_->nb_reqs();
   creq  = 0;
   req.resize(nbreq);
   stat.resize(nbreq);
