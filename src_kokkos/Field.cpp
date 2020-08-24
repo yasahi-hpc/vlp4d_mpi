@@ -5,7 +5,7 @@
 
 void lu_solve_poisson(Config *conf, Efield *ef, Diags *dg, int iter);
 
-void field_rho(Config *conf, Distrib &comm, RealView4D fn, Efield *ef)
+void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef)
 {
   const Domain *dom = &(conf->dom_);
 
@@ -42,28 +42,26 @@ void field_rho(Config *conf, Distrib &comm, RealView4D fn, Efield *ef)
   int local_ystart  = dom->local_nxmin_[1];
   int local_vxstart = dom->local_nxmin_[2];
   int local_vystart = dom->local_nxmin_[3];
-  MDPolicyType_2D integral_policy2d({{0, 0}},
-                                    {{nx_loc, ny_loc}},
+  int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
+  int nx_max = dom->local_nxmax_[0] + 1, ny_max = dom->local_nxmax_[1] + 1, nvx_max = dom->local_nxmax_[2] + 1, nvy_max = dom->local_nxmax_[3] + 1;
+  MDPolicyType_2D integral_policy2d({{nx_min, ny_min}},
+                                    {{nx_max, ny_max}},
                                     {{BASIC_TILE_SIZE0, BASIC_TILE_SIZE1}}
                                    );
 
   Kokkos::parallel_for("integral", integral_policy2d, KOKKOS_LAMBDA (const int ix, const int iy) {
     float64 sum = 0.;
-    for(int ivy=0; ivy<nvy_loc; ivy++) {
-      for(int ivx=0; ivx<nvx_loc; ivx++) {
-        sum += fn(ix  + HALO_PTS,
-                  iy  + HALO_PTS,
-                  ivx + HALO_PTS,
-                  ivy + HALO_PTS);
+    for(int ivy=nvy_min; ivy<nvy_max; ivy++) {
+      for(int ivx=nvx_min; ivx<nvx_max; ivx++) {
+        sum += fn(ix, iy, ivx, ivy);
       }
     }
 
     // stored in the global address
-    rho_loc(ix + local_xstart, iy + local_ystart) = sum * dvx * dvy;
+    rho_loc(ix, iy) = sum * dvx * dvy;
   });
 
   // reduction in velocity space
-  // For some reason, MPI_Allreduce is fairly slow
   int nelems = nx * ny;
   MPI_Allreduce(rho_loc.data(), rho.data(), nelems, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 };

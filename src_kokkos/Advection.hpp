@@ -15,11 +15,10 @@
 #endif
 
 namespace Advection {
-  const int granularity[4] = {2, 2, 2, 2};
 
-  void advect_2D_xy(Config *conf, RealView4D fn, float64 dt);
-  void advect_4D(Config *conf, Efield *ef, RealView4D fn, RealView4D tmp_fn, float64 dt);
-  void print_fxvx(Config *conf, Distrib &comm, const RealView4D fn, int iter);
+  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt);
+  void advect_4D(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D tmp_fn, float64 dt);
+  void print_fxvx(Config *conf, Distrib &comm, const RealOffsetView4D fn, int iter);
 
   static void testError(View1D<int> &err) {
     typename View1D<int>::HostMirror h_err = Kokkos::create_mirror_view(err);
@@ -106,22 +105,11 @@ namespace Advection {
     }
   #endif
 
-  KOKKOS_INLINE_FUNCTION
-  void truncatedSize(int tile_size[], int pos[], int defaultTileSize[], int maxVal[]) {
-    const auto sx = min(maxVal[0] - pos[0], defaultTileSize[0]);
-    const auto sy = min(maxVal[1] - pos[1], defaultTileSize[1]);
-    
-    tile_size[0] = sx;
-    tile_size[1] = sy;
-  }
-
   struct blocked_advect_2D_xy_functor {
     Config *conf_;
-    RealView4D fn_;
-    RealView4D fn_tmp_;
+    RealOffsetView4D fn_;
+    RealOffsetView4D fn_tmp_;
     Kokkos::Experimental::ScatterView<int*> scatter_error_;
-    //int vxmax_, vymax_;
-    //int ts_vx_, ts_vy_;
     float64 dt_;
     float64 minPhyx_, minPhyy_;
     float64 inv_dx_, inv_dy_;
@@ -132,7 +120,7 @@ namespace Advection {
     float64 minPhy_[4];
     float64 dx_[4];
 
-    blocked_advect_2D_xy_functor(Config *conf, RealView4D fn, RealView4D fn_tmp, float64 dt, Kokkos::Experimental::ScatterView<int*> scatter_error)
+    blocked_advect_2D_xy_functor(Config *conf, RealOffsetView4D fn, RealOffsetView4D fn_tmp, float64 dt, Kokkos::Experimental::ScatterView<int*> scatter_error)
       : conf_(conf), fn_(fn), fn_tmp_(fn_tmp), dt_(dt), scatter_error_(scatter_error) {
       const Domain *dom = &(conf->dom_);
       for(int k = 0; k < DIMENSION; k++) {
@@ -177,9 +165,7 @@ namespace Advection {
 
         for(int k2 = 0; k2 <= LAG_ORDER; k2++)
           for(int k1 = 0; k1 <= LAG_ORDER; k1++)
-            int jx = ipos1 + k1 - local_start_[0] + HALO_PTS;
-            int jy = ipos2 + k2 - local_start_[1] + HALO_PTS;
-            ftmp += coefx[k1] * coefy[k2] * tmp2d(jx, jy);
+            ftmp += coefx[k1] * coefy[k2] * tmp2d(ipos1 + k1, ipos2 + k2);
         interp = ftmp;
         return 0;
       #else
@@ -211,8 +197,8 @@ namespace Advection {
         for(int jy = 0; jy <= 3; jy++) {
           float64 sum = 0.;
           for(int jx = 0; jx <= 3; jx++) {
-            sum += etax[jx] * tmp2d(ix - 1 + jx - local_start_[0] + HALO_PTS, 
-                                    iy - 1 + jy - local_start_[1] + HALO_PTS);
+            sum += etax[jx] * tmp2d(ix - 1 + jx,
+                                    iy - 1 + jy);
           }
           ftmp += etay[jy] * sum;
         }
@@ -223,25 +209,19 @@ namespace Advection {
 
     KOKKOS_INLINE_FUNCTION
     void operator()(const int ix, const int iy, const int ivx) const {
-      const int nvy = local_end_[3] - local_start_[3] + 1;
+      const int nvy_min = local_start_[3];
+      const int nvy_max = local_end_[3] + 1;
 
-      int err = 0;
-      for(int ivy = 0; ivy < nvy; ivy++) {
-        int jvx = ivx + local_start_[2];
-        int jvy = ivy + local_start_[3];
-
-        const float64 vx = minPhy_[2] + jvx * dx_[2];
-        const float64 vy = minPhy_[3] + jvy * dx_[3];
+      for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
+        const float64 vx = minPhy_[2] + ivx * dx_[2];
+        const float64 vy = minPhy_[3] + ivy * dx_[3];
         const float64 depx = dt_ * vx;
         const float64 depy = dt_ * vy;
 
-        auto tmp2d = Kokkos::subview(fn_tmp_, Kokkos::ALL, Kokkos::ALL, ivx + HALO_PTS, ivy + HALO_PTS);
+        auto tmp2d = Kokkos::Experimental::subview(fn_tmp_, Kokkos::ALL, Kokkos::ALL, ivx, ivy);
 
-        int jx = ix + local_start_[0];
-        int jy = iy + local_start_[1];
-
-        const float64 x = minPhy_[0] + jx * dx_[0];
-        const float64 y = minPhy_[1] + jy * dx_[1];
+        const float64 x = minPhy_[0] + ix * dx_[0];
+        const float64 y = minPhy_[1] + iy * dx_[1];
 
         const float64 xstar = x - depx;
         const float64 ystar = y - depy;
@@ -249,10 +229,7 @@ namespace Advection {
 
         auto access_error = scatter_error_.access();
         access_error(0) += interp_2D(tmp2d, xstar, ystar, ftmp);
-        fn_(ix  + HALO_PTS, 
-            iy  + HALO_PTS,
-            ivx + HALO_PTS,
-            ivy + HALO_PTS) = ftmp;
+        fn_(ix, iy, ivx, ivy) = ftmp;
       }
     }
   };
@@ -260,8 +237,8 @@ namespace Advection {
   struct advect_4D_functor {
     Config *conf_;
     Efield *ef_;
-    RealView4D fn_;
-    RealView4D fn_tmp_;
+    RealOffsetView4D fn_;
+    RealOffsetView4D fn_tmp_;
     RealView2D ex_;
     RealView2D ey_;
     Kokkos::Experimental::ScatterView<int*> scatter_error_;
@@ -273,7 +250,7 @@ namespace Advection {
     int local_end_[4];
     int nxmax_[4];
 
-    advect_4D_functor(Config *conf, Efield *ef, RealView4D fn, RealView4D fn_tmp, float64 dt, Kokkos::Experimental::ScatterView<int*> scatter_error)
+    advect_4D_functor(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D fn_tmp, float64 dt, Kokkos::Experimental::ScatterView<int*> scatter_error)
       : conf_(conf), ef_(ef), fn_(fn), fn_tmp_(fn_tmp), scatter_error_(scatter_error), dt_(dt) {
       const Domain *dom = &(conf->dom_);
 
@@ -353,7 +330,7 @@ namespace Advection {
     }
 
     KOKKOS_INLINE_FUNCTION
-    float64 interp_4D(const RealView4D &tmp_fn, float64 xstar[]) const {
+    float64 interp_4D(const RealOffsetView4D &tmp_fn, float64 xstar[]) const {
       int ipos[4];
 
       for(int j = 0; j < 4; j++) {
@@ -384,10 +361,10 @@ namespace Advection {
               float64 ftmp3 = 0.;
            
               for(int k0 = 0; k0 <= LAG_ORDER; k0++) {
-                int jx  = ipos[0] + k0 - local_start_[0] + HALO_PTS;
-                int jy  = ipos[1] + k1 - local_start_[1] + HALO_PTS;
-                int jvx = ipos[2] + k2 - local_start_[2] + HALO_PTS;
-                int jvy = ipos[3] + k3 - local_start_[3] + HALO_PTS;
+                int jx  = ipos[0] + k0;
+                int jy  = ipos[1] + k1;
+                int jvx = ipos[2] + k2;
+                int jvy = ipos[3] + k3;
                 ftmp3 += coefx0[k0] * tmp_fn(jx, jy, jvx, jvy);
               }
               ftmp2 += ftmp3 * coefx1[k1];
@@ -421,10 +398,10 @@ namespace Advection {
             for(int k1 = 0; k1 <= 3; k1++) {
               float64 ftmp3 = 0.;
               for(int k0 = 0; k0 <= 3; k0++) {
-                int jx  = ipos[0] + k0 - 1 - local_start_[0] + HALO_PTS;
-                int jy  = ipos[1] + k1 - 1 - local_start_[1] + HALO_PTS;
-                int jvx = ipos[2] + k2 - 1 - local_start_[2] + HALO_PTS;
-                int jvy = ipos[3] + k3 - 1 - local_start_[3] + HALO_PTS;
+                int jx  = ipos[0] + k0 - 1;
+                int jy  = ipos[1] + k1 - 1;
+                int jvx = ipos[2] + k2 - 1;
+                int jvy = ipos[3] + k3 - 1;
                 ftmp3 += eta[0][k0] * tmp_fn(jx, jy, jvx, jvy);
               }
               ftmp2 += ftmp3 * eta[1][k1];
@@ -438,45 +415,36 @@ namespace Advection {
 
     KOKKOS_INLINE_FUNCTION
     void operator()(const int ix, const int iy, const int ivx) const {
-      const int nvy = local_end_[3] - local_start_[3] + 1;
+      const int nvy_min = local_start_[3];
+      const int nvy_max = local_end_[3] + 1;
       auto access_error = scatter_error_.access();
-      for(int ivy = 0; ivy < nvy; ivy++) {
-        int jx  = ix  + local_start_[0];
-        int jy  = iy  + local_start_[1];
-        int jvx = ivx + local_start_[2];
-        int jvy = ivy + local_start_[3];
-
+      for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
         float64 xstar[4];
-        int indices[4] = {jx, jy, jvx, jvy};
+        int indices[4] = {ix, iy, ivx, ivy};
         computeFeet(xstar, indices);
 
         for(int j = 0; j < 4; j++) {
-          access_error(0) += (xstar[j] <  locrxmindx_[j] || xstar[j] > locrxmaxdx_[j]);
+          access_error(0) += (xstar[j] < locrxmindx_[j] || xstar[j] > locrxmaxdx_[j]);
         }
 
-        fn_(ix  + HALO_PTS,
-            iy  + HALO_PTS,
-            ivx + HALO_PTS, 
-            ivy + HALO_PTS) = interp_4D(fn_tmp_, xstar);
+        fn_(ix, iy, ivx, ivy) = interp_4D(fn_tmp_, xstar);
       }
     }
   };
 
-  void advect_2D_xy(Config *conf, RealView4D fn, float64 dt) {
-    int nx  = fn.extent(0);
-    int ny  = fn.extent(1);
-    int nvx = fn.extent(2);
-    int nvy = fn.extent(3);
-    RealView4D fn_tmp = RealView4D("fn_tmp", nx, ny, nvx, nvy);
+  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt) {
+    const Domain *dom = &(conf->dom_);
+
+    int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
+    int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
+    RealOffsetView4D fn_tmp = RealOffsetView4D("fn_tmp",
+                                               {nx_min-HALO_PTS, nx_max+HALO_PTS},
+                                               {ny_min-HALO_PTS, ny_max+HALO_PTS},
+                                               {nvx_min-HALO_PTS, nvx_max+HALO_PTS},
+                                               {nvy_min-HALO_PTS, nvy_max+HALO_PTS});
     Impl::deep_copy(fn_tmp, fn);
-    //Kokkos::deep_copy(fn_tmp, fn);
-
-    int nx_inner  = nx  - HALO_PTS*2;
-    int ny_inner  = ny  - HALO_PTS*2;
-    int nvx_inner = nvx - HALO_PTS*2;
-
-    MDPolicyType_3D advect_2d_policy3d({{0, 0, 0}},
-                                       {{nx_inner, ny_inner, nvx_inner}},
+    MDPolicyType_3D advect_2d_policy3d({{nx_min,   ny_min,   nvx_min}},
+                                       {{nx_max+1, ny_max+1, nvx_max+1}},
                                        {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2}}
                                       );
     
@@ -488,17 +456,14 @@ namespace Advection {
     testError(error);
   }
 
-  void advect_4D(Config *conf, Efield *ef, RealView4D fn, RealView4D tmp_fn, float64 dt) {
-    int nx  = fn.extent(0);
-    int ny  = fn.extent(1);
-    int nvx = fn.extent(2);
-    Kokkos::deep_copy(tmp_fn, fn);
+  void advect_4D(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D tmp_fn, float64 dt) {
+    const Domain *dom = &(conf->dom_);
+    int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
+    int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
+    Impl::deep_copy(tmp_fn, fn);
 
-    int nx_inner  = nx  - HALO_PTS*2;
-    int ny_inner  = ny  - HALO_PTS*2;
-    int nvx_inner = nvx - HALO_PTS*2;
-    MDPolicyType_3D advect_4d_policy3d({{0, 0, 0}},
-                                       {{nx_inner, ny_inner, nvx_inner}},
+    MDPolicyType_3D advect_4d_policy3d({{nx_min, ny_min, nvx_min}},
+                                       {{nx_max+1, ny_max+1, nvx_max+1}},
                                        {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2}}
                                       );
 
@@ -508,21 +473,23 @@ namespace Advection {
     testError(error);
   }
 
-  void print_fxvx(Config *conf, Distrib &comm, const RealView4D fn, int iter) {
+  void print_fxvx(Config *conf, Distrib &comm, const RealOffsetView4D fn, int iter) {
     const Domain *dom = &(conf->dom_);
-    const int nx  = fn.extent(0);
-    const int ny  = fn.extent(1);
-    const int nvx = fn.extent(2);
-    const int nvy = fn.extent(3);
-    int nx_inner  = nx  - HALO_PTS*2;
-    int ny_inner  = ny  - HALO_PTS*2;
-    int nvx_inner = nvx - HALO_PTS*2;
-    int nvy_inner = nvy - HALO_PTS*2;
-    RealView2D fnxvx("fnxvx", nx_inner, nvx_inner);
-    RealView2D fnxvxres("fnxvxres", nx_inner, nvx_inner);
+    const int nx  = dom->nxmax_[0];
+    const int ny  = dom->nxmax_[1];
+    const int nvx = dom->nxmax_[2];
+    const int nvy = dom->nxmax_[3];
+          
+    typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
+    Kokkos::Experimental::deep_copy(h_fn, fn);
 
-    RealView2D fnyvy("fnyvy", ny_inner, nvy_inner);
-    RealView2D fnyvyres("fnyvyres", ny_inner, nvy_inner);
+    typedef RealView2D::HostMirror RealView2Dhost;
+
+    RealView2Dhost fnxvx("fnxvx", nx, nvx);
+    RealView2Dhost fnxvxres("fnxvxres", nx, nvx);
+
+    RealView2Dhost fnyvy("fnyvy", ny, nvy);
+    RealView2Dhost fnyvyres("fnyvyres", ny, nvy);
 
     // At (iy, ivy) = (0, nvy/2) cross section
     const int iy  = 0;
@@ -531,11 +498,7 @@ namespace Advection {
         dom->local_nxmin_[1] <= iy  && iy  <= dom->local_nxmax_[1]) {
       for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
         for(int ix = dom->local_nxmin_[0]; ix <= dom->local_nxmax_[0]; ix++) {
-          int jx  = ix - dom->local_nxmin_[0] + HALO_PTS;
-          int jy  = iy - dom->local_nxmin_[1] + HALO_PTS;
-          int jvx = iy - dom->local_nxmin_[2] + HALO_PTS;
-          int jvy = iy - dom->local_nxmin_[3] + HALO_PTS;
-          fnxvx(ix, ivx) = fn(jx, jy, jvx, jvy);
+          fnxvx(ix, ivx) = h_fn(ix, iy, ivx, ivy);
         }
       }
     }
@@ -547,11 +510,7 @@ namespace Advection {
         dom->local_nxmin_[0] <= ix  && ix  <= dom->local_nxmax_[0]) {
       for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
         for(int iy = dom->local_nxmin_[1]; iy <= dom->local_nxmax_[1]; iy++) {
-          int jx  = ix - dom->local_nxmin_[0] + HALO_PTS;
-          int jy  = iy - dom->local_nxmin_[1] + HALO_PTS;
-          int jvx = iy - dom->local_nxmin_[2] + HALO_PTS;
-          int jvy = iy - dom->local_nxmin_[3] + HALO_PTS;
-          fnyvy(iy, ivy) = fn(jx, jy, jvx, jvy);
+          fnyvy(iy, ivy) = h_fn(ix, iy, ivx, ivy);
         }
       }
     }

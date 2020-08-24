@@ -14,7 +14,7 @@
  * @param[out] ef.ey_ (zero initialization)
  * @param[out] ef.phi_ (zero initialization)
  */
-void field_rho(Config *conf, Distrib &comm, RealView4D fn, Efield *ef);
+void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef);
 void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter);
 
 #endif
