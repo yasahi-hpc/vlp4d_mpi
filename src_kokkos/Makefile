@@ -21,7 +21,7 @@ ifneq (,$(findstring 3D,$(RANGE_POLICY)))
 endif
 LINK = mpicxx
 LDFLAGS = -lcufft -lcublas
-EXE = vlp4d.p100_kokkos
+EXE = vlp4d.tsubame3.0_p100_kokkos
 KOKKOS_DEVICES = "Cuda,OpenMP"
 KOKKOS_ARCH = "BDW,Pascal60"
 KOKKOS_CUDA_OPTIONS += "enable_lambda"
@@ -41,7 +41,7 @@ ifneq (,$(findstring 3D,$(RANGE_POLICY)))
 endif
 LINK = mpicxx
 LDFLAGS = -lfftw3_threads -lfftw3
-EXE = vlp4d.bdw_kokkos
+EXE = vlp4d.tsubame3.0_bdw_kokkos
 KOKKOS_DEVICES = "OpenMP"
 KOKKOS_ARCH = "BDW"
 endif
@@ -59,9 +59,9 @@ ifneq (,$(findstring 3D,$(RANGE_POLICY)))
   CXXFLAGS += -DTILE_X2=32 -DTILE_Y2=4 -DTILE_Z2=2
   CXXFLAGS += -DTILE_X3=32 -DTILE_Y3=4 -DTILE_Z3=2
 endif
-LINK = ${CXX}
-LDFLAGS = -lcufft
-EXE = vlp4d.v100_kokkos
+LINK = mpicxx
+LDFLAGS = -lcufft -lcublas
+EXE = vlp4d.summit_v100_kokkos
 KOKKOS_DEVICES = "Cuda,OpenMP"
 KOKKOS_ARCH = "Power9,Volta70"
 KOKKOS_CUDA_OPTIONS += "enable_lambda"
@@ -82,7 +82,7 @@ ifneq (,$(findstring 3D,$(RANGE_POLICY)))
 endif
 LINK = ${CXX}
 LDFLAGS = -lfftw3_threads -lfftw3
-EXE = vlp4d.skx_kokkos
+EXE = vlp4d.jfrs1_skx_kokkos
 KOKKOS_DEVICES = "OpenMP"
 KOKKOS_ARCH = "SKX"
 endif
@@ -102,7 +102,7 @@ endif
 LINK = ${CXX}
 LDFLAGS=-armpl
 # Execution files
-EXE = vlp4d.tx2_kokkos
+EXE = vlp4d.ccc_tx2_kokkos
 KOKKOS_DEVICES = "OpenMP"
 KOKKOS_ARCH = "ARMv8-TX2"
 endif
