@@ -21,13 +21,26 @@ int main(int argc, char *argv[]) {
   defineTimers(timers);
 
   // Initialization
-  printf("reading input file %s\n", parser.file_);
+  if(comm.master()) printf("reading input file %s\n", parser.file_);
   init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers);
   int iter = 0;
+
+  timers[Total]->begin();
+  timers[TimerEnum::Field]->begin();
   field_rho(&conf, fn, ef);
+  timers[TimerEnum::Field]->end();
+
+  timers[TimerEnum::AllReduce]->begin();
   field_reduce(&conf, ef);
+  timers[TimerEnum::AllReduce]->end();
+
+  timers[TimerEnum::Fourier]->begin();
   field_poisson(&conf, ef, dg, iter);
+  timers[TimerEnum::Fourier]->end();
+
+  timers[Diag]->begin();
   dg->computeL2norm(&conf, fn, iter);
+  timers[Diag]->end();
 
   // Main time step loop
   while(iter < conf.dom_.nbiter_) {
@@ -39,10 +52,12 @@ int main(int argc, char *argv[]) {
     onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);
     fn.swap(fnp1);
   }
+  timers[Total]->end();
 
   if(comm.master()) {
     printTimers(timers);
   }
+  comm.cleanup();
 
   freeTimers(timers);
   comm.finalize();

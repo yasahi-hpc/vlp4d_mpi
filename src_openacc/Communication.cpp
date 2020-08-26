@@ -1,4 +1,5 @@
 #include "Communication.hpp"
+#include "Helper.hpp"
 #include <cmath>
 #include <cassert>
 #include <algorithm>
@@ -110,6 +111,7 @@ void Distrib::createDecomposition(Config *conf) {
     dom.local_nxmin_[j] = node_->xmin_[j];
     dom.local_nxmax_[j] = node_->xmax_[j];
   }
+  dom.pid_ = pid_;
 }
 
 /*
@@ -352,6 +354,9 @@ void Distrib::bookHalo(Config *conf) {
   // Halo size large enough to store 
   send_buffers_ = new Halos();
   recv_buffers_ = new Halos();
+  #if defined( ENABLE_OPENACC )
+    #pragma acc enter data create(send_buffers_[0:1], recv_buffers_[0:1]) 
+  #endif
   send_buffers_->set(conf, send_list_, "send", nbp_, pid_);
   recv_buffers_->set(conf, recv_list_, "recv", nbp_, pid_);
   
@@ -485,6 +490,10 @@ void Distrib::Isend(int &creq, std::vector<MPI_Request> &req) {
       const int size = send_buffers_->merged_size(i);
       const int pid  = send_buffers_->merged_pid(i);
       const int tag  = send_buffers_->merged_tag(i);
+      #if defined( ENABLE_OPENACC )
+        #pragma acc data present(head)
+        #pragma acc host_data use_device(head)
+      #endif
       MPI_Isend(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
     }
   }
@@ -500,6 +509,10 @@ void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
       const int size = recv_buffers_->merged_size(i);
       const int pid  = recv_buffers_->merged_pid(i);
       const int tag  = recv_buffers_->merged_tag(i);
+      #if defined( ENABLE_OPENACC )
+        #pragma acc data present(head)
+        #pragma acc host_data use_device(head)
+      #endif
       MPI_Irecv(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
     }
   }
@@ -519,12 +532,13 @@ void Distrib::packAndBoundary(Config *conf, RealView4D &halo_fn, Halos *send_buf
     const int ny_send  = send_buffers->nhalo_max_[1];
     const int nvx_send = send_buffers->nhalo_max_[2];
     const int nvy_send = send_buffers->nhalo_max_[3];
-    const int nb_send_halos = send_buffers->nb_halos_;
-    const int total_size = send_buffers->total_size_;
-
+    //L2norm(send_buffers->buf_flatten_, pid_);
     pack(conf, halo_fn, send_buffers);
+    //L2norm(send_buffers->buf_, pid_);
     boundary_condition(conf, halo_fn, send_buffers_);
+    //L2norm(send_buffers->buf_, pid_);
     merged_pack(send_buffers);
+    //L2norm(send_buffers->buf_flatten_, pid_);
   }
 }
 

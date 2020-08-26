@@ -11,6 +11,12 @@ Efield::Efield(Config *conf, shape_nd<2> dim)
   ey_      = RealView2D("ey",      dim[0], dim[1]);
   phi_     = RealView2D("phi",     dim[0], dim[1]);
 
+  rho_.fill(0.);
+  rho_loc_.fill(0.);
+  ex_.fill(0.);
+  ey_.fill(0.);
+  phi_.fill(0.);
+
   // Initialize fft helper
   const Domain *dom = &(conf->dom_);
   int nx = dom->nxmax_[0];
@@ -52,7 +58,7 @@ void Efield::solve_poisson_fftw(float64 xmax, float64 ymax) {
   float64 normcoeff = fft_->normcoeff();
 
   #if defined( ENABLE_OPENACC )
-    #pragma acc data present(rho_, rho_hat_, ex_hat_, ey_hat_)
+    #pragma acc data present(rho_, ex_, ey_, rho_hat_, ex_hat_, ey_hat_)
   #endif
   {
     // Forward 2D FFT (Real to complex)

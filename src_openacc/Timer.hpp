@@ -38,24 +38,31 @@ enum TimerEnum : int {Total,
                       pack,
                       comm,
                       unpack,
-                      backward_pack,
-                      backward_comm,
-                      backward_unpack,
-                      derivative_2D,
+                      Advec2D,
+                      Advec4D,
+                      Field,
+                      AllReduce,
+                      Fourier,
+                      Diag,
+                      Splinecoeff_xy,
+                      Splinecoeff_vxvy,
                       Nb_timers};
 
 static void defineTimers(std::vector<Timer*> &timers) {
   // Set timers
   timers.resize(Nb_timers);
-  timers[Total]           = new Timer("total");
-  timers[TimerEnum::pack]    = new Timer("pack");
-  timers[TimerEnum::comm]    = new Timer("comm");
-  timers[TimerEnum::unpack]  = new Timer("unpack");
-  timers[backward_pack]   = new Timer("backward_pack");
-  timers[backward_comm]   = new Timer("backward_comm");
-  timers[backward_unpack] = new Timer("backward_unpack");
-  timers[derivative_2D]   = new Timer("derivative_2D");
-  timers[Nb_timers]       = new Timer("nb_timers");
+  timers[Total]                       = new Timer("total");
+  timers[TimerEnum::pack]             = new Timer("pack");
+  timers[TimerEnum::comm]             = new Timer("comm");
+  timers[TimerEnum::unpack]           = new Timer("unpack");
+  timers[TimerEnum::Advec2D]          = new Timer("advec2D");
+  timers[TimerEnum::Advec4D]          = new Timer("advec4D");
+  timers[TimerEnum::Field]            = new Timer("field");
+  timers[TimerEnum::AllReduce]        = new Timer("all_reduce");
+  timers[TimerEnum::Fourier]          = new Timer("Fourier");
+  timers[TimerEnum::Diag]             = new Timer("diag");
+  timers[TimerEnum::Splinecoeff_xy]   = new Timer("splinecoeff_xy");
+  timers[TimerEnum::Splinecoeff_vxvy] = new Timer("splinecoeff_vxvy");
 }
 
 static void printTimers(std::vector<Timer*> &timers) {

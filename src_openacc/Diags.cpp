@@ -22,7 +22,8 @@ void Diags::compute(Config *conf, Efield *ef, int iter) {
   float64 iter_mass = 0.;
   float64 it_nrj = 0., it_nrjx = 0., it_nrjy = 0.;
   #if defined( ENABLE_OPENACC )
-    #pragma acc parallel loop collapse(2)
+    #pragma acc data present(ef[0:1], ef->rho_, ef->ex_, ef->ey_)
+    #pragma acc parallel loop collapse(2) reduction(+:iter_mass,it_nrj,it_nrjx,it_nrjy)
   #else
     #pragma omp parallel for collapse(2) reduction(+:iter_mass,it_nrj,it_nrjx,it_nrjy)
   #endif 
@@ -53,7 +54,8 @@ void Diags::computeL2norm(Config *conf, RealView4D &fn, int iter) {
 
   float64 l2loc = 0.;
   #if defined( ENABLE_OPENACC )
-    #pragma acc parallel loop collapse(2)
+    #pragma acc data present(fn)
+    #pragma acc parallel loop collapse(2) reduction(+:l2loc)
   #else
     #pragma omp parallel for collapse(3) reduction(+:l2loc)
   #endif 

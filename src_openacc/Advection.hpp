@@ -150,7 +150,7 @@ namespace Advection {
       const int ix = floor(fx);
       const int iy = floor(fy);
       const float64 wx = fx - static_cast<float64>(ix);
-      const float64 wy = fx - static_cast<float64>(iy);
+      const float64 wy = fy - static_cast<float64>(iy);
 
       const float64 etax3 = (1./6.) * wx * wx * wx;
       const float64 etax0 = (1./6.) + 0.5  * wx * (wx-1.) - etax3;
@@ -173,9 +173,9 @@ namespace Advection {
       for(int jy = 0; jy <= 3; jy++) {
         float64 sum = 0.;
         for(int jx = 0; jx <= 3; jx++) {
-          int jx = ix - 1 + jx - xmin[0] + HALO_PTS;
-          int jy = iy - 1 + jy - xmin[1] + HALO_PTS;
-          sum += etax[jx] * tmp2d[Index::coord_2D2int(jx, jy, nx[0], nx[1])];
+          sum += etax[jx] * tmp2d[Index::coord_2D2int(ix - 1 + jx - xmin[0] + HALO_PTS, 
+                                                      iy - 1 + jy - xmin[1] + HALO_PTS, 
+                                                      nx[0], nx[1])];
         }
         ftmp += etay[jy] * sum;
       }
@@ -218,8 +218,6 @@ namespace Advection {
 
       for(int k2 = 0; k2 <= LAG_ORDER; k2++) {
         for(int k1 = 0; k1 <= LAG_ORDER; k1++) {
-          int jx = ipos1 + k1 - xmin[0] + HALO_PTS;
-          int jy = ipos2 + k2 - xmin[1] + HALO_PTS;
           ftmp += coefx[k1] * coefy[k2] * fn_tmp(ipos1 + k1, ipos2 + k2, ivx, ivy);
         }
       }
@@ -231,10 +229,10 @@ namespace Advection {
       const int ix = floor(fx);
       const int iy = floor(fy);
       const float64 wx = fx - static_cast<float64>(ix);
-      const float64 wy = fx - static_cast<float64>(iy);
+      const float64 wy = fy - static_cast<float64>(iy);
 
       const float64 etax3 = (1./6.) * wx * wx * wx;
-      const float64 etax0 = (1./6.) + 0.5  * wx * (wx-1.) - etax3;
+      const float64 etax0 = (1./6.) + 0.5  * wx * (wx - 1.) - etax3;
       const float64 etax2 = wx + etax0 - 2. * etax3;
       const float64 etax1 = 1. - etax0 - etax2 - etax3;
       const float64 etax[4] = {etax0, etax1, etax2, etax3};
@@ -256,8 +254,7 @@ namespace Advection {
       for(int jy = 0; jy <= 3; jy++) {
         float64 sum = 0.;
         for(int jx = 0; jx <= 3; jx++) {
-          sum += etax[jx] *  fn_tmp(ix-1+jx, iy-1+iy, ivx, ivy);
-          //sum += etax[jx] * tmp2d[Index::coord_2D2int(jx, jy, nx[0], nx[1])];
+          sum += etax[jx] *  fn_tmp(ix-1+jx, iy-1+jy, ivx, ivy);
         }
         ftmp += etay[jy] * sum;
       }
@@ -283,7 +280,7 @@ namespace Advection {
     xtmp[2] = vx - 0.5 * dt * ex(pos[0], pos[1]);
     xtmp[3] = vy - 0.5 * dt * ey(pos[0], pos[1]);
 
-    float64 ftmp1, ftmp2;
+    float64 ftmp1 = 0., ftmp2 = 0.;
 
     for(int count = 0; count < 1; count++) {
       int ipos[2];
@@ -368,7 +365,7 @@ namespace Advection {
         ipos[j] = floor(xstar[j]);
         const float64 wx = xstar[j] - ipos[j];
         const float64 etax3 = (1./6.) * wx * wx * wx;
-        const float64 etax0 = (1./6.) + 5. * wx * (wx - 1.) - etax3;
+        const float64 etax0 = (1./6.) + 0.5 * wx * (wx - 1.) - etax3;
         const float64 etax2 = wx + etax0 - 2. * etax3;
         const float64 etax1 = 1. - etax0 - etax2 - etax3;
         eta[j][0] = etax0;
@@ -431,24 +428,16 @@ namespace Advection {
     const int nvx_max = dom->local_nxmax_[2] + 1;
     const int nvy_max = dom->local_nxmax_[3] + 1;
 
-    const int nx  = dom->local_nx_[0] + HALO_PTS*2 + 1;
-    const int ny  = dom->local_nx_[1] + HALO_PTS*2 + 1;
-    const int nvx = dom->local_nx_[2] + HALO_PTS*2 + 1;
-    const int nvy = dom->local_nx_[3] + HALO_PTS*2 + 1;
-
     const float64 inv_dx[2] = {1./dx, 1./dy};
     const float64 minPhy[2] = {dom->minPhy_[0], dom->minPhy_[1]};
     const float64 xmin[2]   = {dom->local_nxmin_[0], dom->local_nxmin_[1]};
     const float64 xmax[2]   = {dom->local_nxmax_[0], dom->local_nxmax_[1]};
-    //RealView2D tmp2d("tmp2d", nx, ny);
-    //float64 *ptr_tmp2d = tmp2d.data();
-    // private means each thread gets its own copy of the pointer variable, not a copy of the memory that it points to
     shape_nd<DIMENSION> shape_halo;
     shape_nd<DIMENSION> nxmin_halo;
     for(int i=0; i<DIMENSION; i++)
       nxmin_halo[i] = dom->local_nxmin_[i] - HALO_PTS;
     for(int i=0; i<DIMENSION; i++)
-      shape_halo[i] = dom->local_nx_[i] + HALO_PTS*2 + 1;
+      shape_halo[i] = dom->local_nxmax_[i] - dom->local_nxmin_[i] + HALO_PTS*2 + 1;
 
     // Allocate 4D data structures with Offsets
     RealView4D fn_tmp = RealView4D("fn_tmp", shape_halo, nxmin_halo);
@@ -456,7 +445,8 @@ namespace Advection {
 
     int err = 0;
     #if defined( ENABLE_OPENACC )
-      #pragma acc parallel loop collapse(4)
+      #pragma acc data present(fn, fn_tmp)
+      #pragma acc parallel loop collapse(4) reduction(+:err)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
@@ -486,7 +476,68 @@ namespace Advection {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  advect_2D_xy_(Config *conf, RealView4D &fn, float64 dt) {
+    advect_2D_xy_(Config *conf, RealView4D &fn, float64 dt) {
+    Domain *dom = &(conf->dom_);
+    const float64 minPhyx  = dom->minPhy_[0];
+    const float64 minPhyy  = dom->minPhy_[1];
+    const float64 minPhyvx = dom->minPhy_[2];
+    const float64 minPhyvy = dom->minPhy_[3];
+    const float64 dx  = dom->dx_[0];
+    const float64 dy  = dom->dx_[1];
+    const float64 dvx = dom->dx_[2];
+    const float64 dvy = dom->dx_[3];
+    const int nx_min  = dom->local_nxmin_[0];
+    const int ny_min  = dom->local_nxmin_[1];
+    const int nvx_min = dom->local_nxmin_[2];  
+    const int nvy_min = dom->local_nxmin_[3];
+    const int nx_max  = dom->local_nxmax_[0] + 1;
+    const int ny_max  = dom->local_nxmax_[1] + 1;
+    const int nvx_max = dom->local_nxmax_[2] + 1;
+    const int nvy_max = dom->local_nxmax_[3] + 1;
+
+    const float64 inv_dx[2] = {1./dx, 1./dy};
+    const float64 minPhy[2] = {dom->minPhy_[0], dom->minPhy_[1]};
+    const float64 xmin[2]   = {dom->local_nxmin_[0], dom->local_nxmin_[1]};
+    const float64 xmax[2]   = {dom->local_nxmax_[0], dom->local_nxmax_[1]};
+    shape_nd<DIMENSION> shape_halo;
+    shape_nd<DIMENSION> nxmin_halo;
+    for(int i=0; i<DIMENSION; i++)
+      nxmin_halo[i] = dom->local_nxmin_[i] - HALO_PTS;
+    for(int i=0; i<DIMENSION; i++)
+      shape_halo[i] = dom->local_nxmax_[i] - dom->local_nxmin_[i] + HALO_PTS*2 + 1;
+
+    // Allocate 4D data structures with Offsets
+    RealView4D fn_tmp = RealView4D("fn_tmp", shape_halo, nxmin_halo);
+    Impl::deep_copy(fn_tmp, fn);
+
+    int err = 0;
+    #if defined( ENABLE_OPENACC )
+      #pragma acc data present(fn, fn_tmp)
+      #pragma acc parallel loop collapse(4)
+    #else
+      #pragma omp parallel for collapse(2) reduction(+:err)
+    #endif
+    for(int ix = nx_min; ix < nx_max; ix++) {
+      for(int iy = ny_min; iy < ny_max; iy++) {
+        for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
+          for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
+            const float64 x  = minPhyx  + ix  * dx;
+            const float64 y  = minPhyy  + iy  * dy;
+            const float64 vx = minPhyvx + ivx * dvx;
+            const float64 vy = minPhyvy + ivy * dvy;
+            const float64 depx = dt * vx;
+            const float64 depy = dt * vy;
+            const float64 xstar[2] = {x - depx, y - depy};
+            const int indices[2] = {ivx, ivy};
+            float64 ftmp = 0;
+            err += interp_2D(fn_tmp, xstar, inv_dx, minPhy, 
+                             xmin, xmax, indices, ftmp);
+            fn(ix, iy, ivx, ivy) = ftmp;
+          }
+        }
+      }
+    }
+    testError(err);
   }
 
   // Layout Left
@@ -522,7 +573,8 @@ namespace Advection {
     Impl::deep_copy(tmp_fn, fn);
 
     #if defined( ENABLE_OPENACC )
-      #pragma acc parallel loop collapse(4) reduction(+:err)
+      #pragma acc data present(fn, tmp_fn, ef[0:1], ef->ex_, ef->ey_)
+      #pragma acc parallel loop collapse(4)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
@@ -547,6 +599,7 @@ namespace Advection {
     testError(err);
   }
 
+  // Layout right
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
@@ -556,10 +609,10 @@ namespace Advection {
     const int ny_min  = dom->local_nxmin_[1];
     const int nvx_min = dom->local_nxmin_[2];
     const int nvy_min = dom->local_nxmin_[3];
-    const int nx_max  = dom->local_nxmax_[0];
-    const int ny_max  = dom->local_nxmax_[1];
-    const int nvx_max = dom->local_nxmax_[2];
-    const int nvy_max = dom->local_nxmax_[3];
+    const int nx_max  = dom->local_nxmax_[0] + 1;
+    const int ny_max  = dom->local_nxmax_[1] + 1;
+    const int nvx_max = dom->local_nxmax_[2] + 1;
+    const int nvy_max = dom->local_nxmax_[3] + 1;
 
     float64 rxmin[DIMENSION], inv_dx[DIMENSION];
     float64 rxwidth[DIMENSION], dx[DIMENSION];
@@ -576,22 +629,18 @@ namespace Advection {
     }
      
     int err = 0;
-    #pragma omp parallel for schedule(static) collapse(2)
-    for(int ix = nx_min - HALO_PTS; ix < nx_max + HALO_PTS + 1; ix++) {
-      for(int iy = ny_min - HALO_PTS; iy < ny_max + HALO_PTS + 1; iy++) {
-        for(int ivx = nvx_min - HALO_PTS; ivx < nvx_max + HALO_PTS + 1; ivx++) {
-          for(int ivy = nvy_min - HALO_PTS; ivy < nvy_max + HALO_PTS + 1; ivy++) {
-            tmp_fn(ix, iy, ivx, ivy) = fn(ix, iy, ivx, ivy);
-          }
-        }
-      }
-    }
+    Impl::deep_copy(tmp_fn, fn);
 
-    #pragma omp parallel for schedule(static) collapse(2)
-    for(int ix = nx_min - HALO_PTS; ix < nx_max + HALO_PTS + 1; ix++) {
-      for(int iy = ny_min - HALO_PTS; iy < ny_max + HALO_PTS + 1; iy++) {
-        for(int ivx = nvx_min - HALO_PTS; ivx < nvx_max + HALO_PTS + 1; ivx++) {
-          for(int ivy = nvy_min - HALO_PTS; ivy < nvy_max + HALO_PTS + 1; ivy++) {
+    #if defined( ENABLE_OPENACC )
+      #pragma acc data present(fn, tmp_fn, ef->ex_, ef->ey_)
+      #pragma acc parallel loop collapse(4) reduction(+:err)
+    #else
+      #pragma omp parallel for collapse(2) reduction(+:err)
+    #endif
+    for(int ix = nx_min; ix < nx_max; ix++) {
+      for(int iy = ny_min; iy < ny_max; iy++) {
+        for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
+          for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
             float64 xstar[DIMENSION];
             int indices[4] = {ix, iy, ivx, ivy};
             computeFeet(xstar, ef->ex_, ef->ey_, rxmin, rxwidth,
@@ -606,6 +655,7 @@ namespace Advection {
         }
       }
     }
+    testError(err);
   }
 
   void print_fxvx(Config *conf, Distrib &comm, const RealView4D &fn, int iter) {

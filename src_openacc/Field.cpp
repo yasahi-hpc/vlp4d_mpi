@@ -5,20 +5,21 @@ void lu_solve_poisson(Config *conf, Efield *ef, Diags *dg, int iter);
 void field_rho(Config *conf, RealView4D &fn, Efield *ef) {
   const Domain *dom = &(conf->dom_);
 
-  int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
-  int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
+  int nx_min = dom->local_nxmin_[0],     ny_min = dom->local_nxmin_[1],     nvx_min = dom->local_nxmin_[2],     nvy_min = dom->local_nxmin_[3];
+  int nx_max = dom->local_nxmax_[0] + 1, ny_max = dom->local_nxmax_[1] + 1, nvx_max = dom->local_nxmax_[2] + 1, nvy_max = dom->local_nxmax_[3] + 1;
   float64 dvx = dom->dx_[2], dvy = dom->dx_[3];
 
   #if defined( ENABLE_OPENACC )
-    #pragma acc data present(ef)
+    #pragma acc data present(ef[0:1], ef->rho_loc_, fn)
+    #pragma acc parallel loop collapse(2)
   #else
     #pragma omp parallel for collapse(2)
   #endif
-  for(int iy=ny_min; iy<=ny_max; iy++) {
-    for(int ix=nx_min; ix<=nx_max; ix++) {
+  for(int iy=ny_min; iy<ny_max; iy++) {
+    for(int ix=nx_min; ix<nx_max; ix++) {
       float64 sum = 0.;
-      for(int ivy=nvy_min; ivy<=nvy_max; ivy++) {
-        for(int ivx=nvx_min; ivx<=nvx_max; ivx++) {
+      for(int ivy=nvy_min; ivy<nvy_max; ivy++) {
+        for(int ivx=nvx_min; ivx<nvx_max; ivx++) {
           sum += fn(ix, iy, ivx, ivy);
         }
       }
@@ -35,7 +36,7 @@ void field_reduce(Config *conf, Efield *ef) {
   float64 *ptr_rho     = ef->rho_.data();
   float64 *ptr_rho_loc = ef->rho_loc_.data();
   #if defined( ENABLE_OPENACC )
-    #pragma acc data present(ef)
+    #pragma acc data present(ptr_rho, ptr_rho_loc)
     #pragma acc host_data use_device(ptr_rho, ptr_rho_loc)
   #endif
   MPI_Allreduce(ptr_rho_loc, ptr_rho, nelems, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -53,7 +54,7 @@ void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter) {
   switch(dom->idcase_) {
     case 2:
       #if defined( ENABLE_OPENACC )
-        #pragma acc data present(ef)
+        #pragma acc data present(ef[0:1], ef->ex_, ef->ey_)
         #pragma acc parallel loop collapse(2)
       #else
         #pragma omp parallel for collapse(2)
@@ -67,7 +68,7 @@ void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter) {
       break;
     case 6:
       #if defined( ENABLE_OPENACC )
-        #pragma acc data present(ef)
+        #pragma acc data present(ef[0:1], ef->ex_, ef->ey_)
         #pragma acc parallel loop collapse(2)
       #else
         #pragma omp parallel for collapse(2)
@@ -84,7 +85,7 @@ void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter) {
     case 20:
 
       #if defined( ENABLE_OPENACC )
-        #pragma acc data present(ef)
+        #pragma acc data present(ef[0:1], ef->rho_)
         #pragma acc parallel loop collapse(2)
       #else
         #pragma omp parallel for collapse(2)

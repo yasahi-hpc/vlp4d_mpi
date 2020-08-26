@@ -1,4 +1,5 @@
 #include "Init.hpp"
+#include "Helper.hpp"
 
 // Prototypes
 void import(const char *f, Config *conf);
@@ -142,6 +143,7 @@ void initcase(Config* conf, RealView4D &fn) {
       abort();
       break;
   }
+  fn.updateDevice();
 }
 
 void testcaseCYL02(Config* conf, RealView4D &fn) {
@@ -274,7 +276,7 @@ void testcaseTSI20(Config* conf, RealView4D &fn) {
 }
 
 void testcase_ptest_init(Config *conf, Distrib &comm, RealView4D &halo_fn) {
-  const Domain *dom = &(conf->dom_);
+  Urbnode *node = comm.node();
 
   for(int ivy = node->xmin_[3]; ivy <= node->xmax_[3]; ivy++) {
     for(int ivx = node->xmin_[2]; ivx <= node->xmax_[2]; ivx++) {
@@ -338,13 +340,8 @@ void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealVie
   int nx = shape_halo[0], ny = shape_halo[1], nvx = shape_halo[2], nvy = shape_halo[3];
   fn   = RealView4D("fn",   shape_halo, nxmin_halo);
   fnp1 = RealView4D("fnp1", shape_halo, nxmin_halo);
+  fn.fill(0); fnp1.fill(0);
 
-  //std::cout << "Data allocation " << std::endl;
-  //std::cout << "shape_halo[0], shape_halo[1], shape_halo[2], shape_halo[3] = " 
-  //          << shape_halo[0] << ", " << shape_halo[1] << ", " << shape_halo[2] << ", " << shape_halo[3] << std::endl;
-  //std::cout << "nxmin_halo[0], nxmin_halo[1], nxmin_halo[2], nxmin_halo[3] = " 
-  //          << nxmin_halo[0] << ", " << nxmin_halo[1] << ", " << nxmin_halo[2] << ", " << nxmin_halo[3] << std::endl;
-  
   comm.neighboursList(conf, fn);
   comm.bookHalo(conf);
 
@@ -363,14 +360,21 @@ void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealVie
   
   // allocate and initialize diagnostics data structures
   *dg = new Diags(conf);
+
+  #if defined( ENABLE_OPENACC )
+    #pragma acc enter data create(ef[0:1])
+  #endif
   
   // Initialize distribution function
   fn = RealView4D("fn", shape_halo, nxmin_halo); // Needed for CPU to zero init
+  fn.fill(0);
   initcase(conf, fn);
 }
 
 void finalize(Efield **ef, Diags **dg) {
-  // Store diagnostics
+  #if defined( ENABLE_OPENACC )
+    #pragma acc exit data delete(ef[0:1])
+  #endif
   delete *ef;
   delete *dg;
 }
