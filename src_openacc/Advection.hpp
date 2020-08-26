@@ -446,13 +446,19 @@ namespace Advection {
     int err = 0;
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(4) reduction(+:err)
+      #pragma acc parallel loop collapse(2)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
     for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
       for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
+        #if defined( ENABLE_OPENACC )
+          #pragma acc loop independent
+        #endif
         for(int iy = ny_min; iy < ny_max; iy++) {
+          #if defined( ENABLE_OPENACC )
+            #pragma acc loop vector independent
+          #endif
           for(int ix = nx_min; ix < nx_max; ix++) {
             const float64 x  = minPhyx  + ix  * dx;
             const float64 y  = minPhyy  + iy  * dy;
@@ -513,13 +519,16 @@ namespace Advection {
     int err = 0;
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(4)
+      #pragma acc parallel loop collapse(3) reduction(+:err)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
     for(int ix = nx_min; ix < nx_max; ix++) {
       for(int iy = ny_min; iy < ny_max; iy++) {
         for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
+          #if defined( ENABLE_OPENACC )
+            #pragma acc loop vector independent
+          #endif
           for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
             const float64 x  = minPhyx  + ix  * dx;
             const float64 y  = minPhyy  + iy  * dy;
@@ -574,13 +583,16 @@ namespace Advection {
 
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, tmp_fn, ef[0:1], ef->ex_, ef->ey_)
-      #pragma acc parallel loop collapse(4)
+      #pragma acc parallel loop collapse(3)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
     for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
       for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
         for(int iy = ny_min; iy < ny_max; iy++) {
+          #if defined( ENABLE_OPENACC )
+            #pragma acc loop vector independent
+          #endif
           for(int ix = nx_min; ix < nx_max; ix++) {
             float64 xstar[DIMENSION];
             int indices[4] = {ix, iy, ivx, ivy};
@@ -633,13 +645,16 @@ namespace Advection {
 
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, tmp_fn, ef->ex_, ef->ey_)
-      #pragma acc parallel loop collapse(4) reduction(+:err)
+      #pragma acc parallel loop collapse(3)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
     for(int ix = nx_min; ix < nx_max; ix++) {
       for(int iy = ny_min; iy < ny_max; iy++) {
         for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
+          #if defined( ENABLE_OPENACC )
+            #pragma acc loop vector independent
+          #endif
           for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
             float64 xstar[DIMENSION];
             int indices[4] = {ix, iy, ivx, ivy};

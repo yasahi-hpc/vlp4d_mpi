@@ -57,7 +57,7 @@ namespace Spline {
       const int i3start = n3_min + HALO_PTS - 2;
       const int i3end   = n3_max - HALO_PTS + 1;
       #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(2)
+      #pragma acc parallel loop independent collapse(2)
       for(int i1=n1_min; i1 < n1_max; i1++) {
         for(int i0=n0_min; i0 < n0_max; i0++) {
           const float64 alpha = sqrt3 - 2;
@@ -182,7 +182,7 @@ namespace Spline {
       const int i1start = n1_min + HALO_PTS - 2;
       const int i1end   = n1_max - HALO_PTS + 1;
       #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(2)
+      #pragma acc parallel loop collapse(2) 
       for(int i2=n2_min; i2 < n2_max; i2++) {
         for(int i3=n3_min; i3 < n3_max; i3++) {
           const float64 alpha = sqrt3 - 2;
@@ -317,9 +317,12 @@ namespace Spline {
       RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       Impl::Transpose<float64> transpose(nx*ny, nvx*nvy);
-      transpose.forward(fn.data(), fn_trans.data());
-      computeCoeff<array_layout::value>(fn_trans, fn_tmp);
-      transpose.backward(fn_trans.data(), fn.data());
+      #pragma acc data present(fn, fn_trans, fn_tmp)
+      {
+        transpose.forward(fn.data(), fn_trans.data());
+        computeCoeff<array_layout::value>(fn_trans, fn_tmp);
+        transpose.backward(fn_trans.data(), fn.data());
+      }
     #else
       RealView4D fn_tmp = RealView4D("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
       computeCoeff<array_layout::value>(fn, fn_tmp);

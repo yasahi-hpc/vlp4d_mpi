@@ -82,14 +82,10 @@ public:
     data_ = new ScalarType[sz];
     size_ = sz;
 
-    for(int i=0; i<sz; i++) {
-      this->data_[i] = 0.;
-    }
-
     #if defined( ENABLE_OPENACC )
       #pragma acc enter data copyin(this) // shallow copy this pointer
       #pragma acc enter data create(data_[0:size_], strides_[0:dims_]) // attach data (deep copy)
-      #pragma acc update device(data_[0:size_], strides_[0:dims_])
+      #pragma acc update device(strides_[0:dims_])
     #endif
   }
 
@@ -131,14 +127,10 @@ public:
     data_ = new ScalarType[sz];
     size_ = sz;
    
-    for(int i=0; i<sz; i++) {
-      this->data_[i] = 0.;
-    }
-   
     #if defined( ENABLE_OPENACC )
       #pragma acc enter data copyin(this) // shallow copy this pointer
       #pragma acc enter data create(data_[0:size_], strides_[0:dims_]) // attach data (deep copy)
-      #pragma acc update device(data_[0:size_], strides_[0:dims_])
+      #pragma acc update device(strides_[0:dims_])
     #endif
   }
   
@@ -172,10 +164,6 @@ public:
     size_ = sz;
     data_ = new ScalarType[sz];
 
-    for(int i=0; i<sz; i++) {
-      this->data_[i] = 0.;
-    }
-
     // subtract the offsets here
     int offset = 0;
     typedef std::integral_constant<Layout, Layout::LayoutLeft> layout_left;
@@ -199,7 +187,7 @@ public:
     #if defined( ENABLE_OPENACC )
       #pragma acc enter data copyin(this) // shallow copy this pointer
       #pragma acc enter data create(data_[0:size_], strides_[0:dims_]) // attach data
-      #pragma acc update device(data_[0:size_], strides_[0:dims_])
+      #pragma acc update device(strides_[0:dims_])
     #endif
   }
 
@@ -237,7 +225,7 @@ public:
     setName(rhs.name() + "_copy");
   }
 
-  // Assignmenet operator allocates the data
+  // Assignmenet operator used only for data allocation, values are not copied
   View& operator=(const View &rhs) {
     this->is_empty_  = false;
     this->is_copied_ = false;
@@ -245,7 +233,7 @@ public:
     this->data_     = new ScalarType[rhs.size()];
     this->size_     = rhs.size();
     this->dims_     = rhs.dims();
-    this->name_     = rhs.name() + "_copy";
+    this->name_     = rhs.name() + "_assign";
     this->total_offset_ = rhs.total_offsets();
     
     // copy meta data
@@ -256,15 +244,16 @@ public:
       this->strides_[i]      = rhs.strides_ptr()[i];
     }
     
-    size_t sz = this->size_;
-    for(int i=0; i<sz; i++) {
-      this->data_[i] = rhs.data()[i];
-    }
+    //size_t sz = this->size_;
+    //for(int i=0; i<sz; i++) {
+    //  this->data_[i] = rhs.data()[i];
+    //}
     
     #if defined( ENABLE_OPENACC )
       #pragma acc enter data copyin(this) // shallow copy this pointer
       #pragma acc enter data create(data_[0:size_], strides_[0:dims_]) // attach data (deep copy)
-      #pragma acc update device(data_[0:size_], strides_[0:dims_])
+      #pragma acc update device(strides_[0:dims_])
+      //#pragma acc update device(data_[0:size_], strides_[0:dims_])
     #endif
     
     return *this;
@@ -472,7 +461,7 @@ private:
 
   template <typename I0, typename I1, typename I2, typename I3, Layout LType = LayoutType>
   inline typename std::enable_if<std::is_same<std::integral_constant<Layout, LType>, std::integral_constant<Layout, Layout::LayoutRight>>::value, ScalarType&>::type 
-  access(I0 i0, I1 i1, I2 i2) const noexcept {
+  access(I0 i0, I1 i1, I2 i2, I3 i3) const noexcept {
     int idx = total_offset_ + i3 + i2 * strides_[3] + i1 * strides_[2] + i0 * strides_[1];
     return data_[idx];
   }

@@ -111,7 +111,6 @@ void Distrib::createDecomposition(Config *conf) {
     dom.local_nxmin_[j] = node_->xmin_[j];
     dom.local_nxmax_[j] = node_->xmax_[j];
   }
-  dom.pid_ = pid_;
 }
 
 /*
