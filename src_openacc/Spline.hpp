@@ -316,7 +316,7 @@ namespace Spline {
     #if defined( ENABLE_OPENACC )
       RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64> transpose(nx*ny, nvx*nvy);
+      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       #pragma acc data present(fn, fn_trans, fn_tmp)
       {
         transpose.forward(fn.data(), fn_trans.data());
@@ -356,7 +356,7 @@ namespace Spline {
     #else
       RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64> transpose(nx*ny, nvx*nvy);
+      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       transpose.forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
       transpose.backward(fn_trans.data(), fn.data());
@@ -389,7 +389,7 @@ namespace Spline {
     #else
       RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64> transpose(nx*ny, nvx*nvy);
+      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       transpose.forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
       transpose.backward(fn_trans.data(), fn.data());
@@ -419,7 +419,7 @@ namespace Spline {
     #if defined( ENABLE_OPENACC )
       RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64> transpose(nx*ny, nvx*nvy);
+      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       transpose.forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
       transpose.backward(fn_trans.data(), fn.data());
