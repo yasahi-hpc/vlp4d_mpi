@@ -418,7 +418,6 @@ private:
   // Called after applying boundary condition
   void merged_pack(Halos *send_buffers) {
     const int total_size = send_buffers->total_size_;
-    //std::cout << "total_size" << total_size << std::endl;
     #if defined( ENABLE_OPENACC )
       #pragma acc parallel loop present(this,send_buffers->flatten_map_, send_buffers->buf_, send_buffers->buf_flatten_)
     #else
@@ -459,18 +458,8 @@ private:
     }
   }
 
-  // Boundary condition
+  // Boundary condition OpenMP specialization (loop over each halo)
   void boundary_condition(Config *conf, RealView4D &halo_fn, Halos *send_halos) {
-    //#if defined( ENABLE_OPENACC )
-    //  boundary_condition_acc_(conf, halo_fn, send_halos);
-    //#else
-    //  boundary_condition_omp_(conf, halo_fn, send_halos);
-    //#endif
-      boundary_condition_omp_(conf, halo_fn, send_halos);
-  }
-
-  // OpenMP specialization (loop over each halo)
-  void boundary_condition_omp_(Config *conf, RealView4D &halo_fn, Halos *send_halos) {
     const Domain *dom = &(conf->dom_);
     int nx = dom->nxmax_[0], ny = dom->nxmax_[1], nvx = dom->nxmax_[2], nvy = dom->nxmax_[3];
     int bc_sign[8];
@@ -733,6 +722,7 @@ private:
     } // for(int ib = 0; ib < nb; ib++)
   }
 
+  /* Kokkos like implementation, for some reason, not working appropriately
   void boundary_condition_acc_(Config *conf, RealView4D &halo_fn, Halos *send_halos) {
     const Domain *dom = &(conf->dom_);
     int nx = dom->nxmax_[0], ny = dom->nxmax_[1], nvx = dom->nxmax_[2], nvy = dom->nxmax_[3];
@@ -997,6 +987,7 @@ private:
       } // for(int ivx = 0; ivx < nvx_send; ivx++)
     } // for(int ib = 0; ib < nb_send_halos; ib++)
   }
+  */
             
   int mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std::vector<Halo>::iterator &g);
   

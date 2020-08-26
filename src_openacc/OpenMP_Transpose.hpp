@@ -48,8 +48,8 @@ namespace Impl {
       }
 
     private:
-      void exec(ScalarType *dptr_in, ScalarType *dptr_out) {
-        #pragma omp parallel for schedule(static) collapse(2)
+      void exec(ScalarType *dptr_in, ScalarType *dptr_out, int row, int col) {
+        #pragma omp parallel for collapse(2)
         for(int j = 0; j < col; j += blocksize_) {
           for(int i = 0; i < row; i += blocksize_) {
             for(int c = j; c < j + blocksize_ && c < col; c++) {
