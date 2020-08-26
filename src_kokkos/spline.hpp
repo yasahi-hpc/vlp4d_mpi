@@ -14,8 +14,8 @@
 
 namespace Spline {
   // prototypes
-  void computeCoeff_xy(Config *conf, RealView4D fn);
-  void computeCoeff_vxvy(Config *conf, RealView4D fn);
+  void computeCoeff_xy(Config *conf, RealOffsetView4D fn);
+  void computeCoeff_vxvy(Config *conf, RealOffsetView4D fn);
 
   // Internal functions
   /* 
@@ -26,17 +26,11 @@ namespace Spline {
   template <class ViewType>
   KOKKOS_INLINE_FUNCTION
   void getSplineCoeff1D(ViewType &tmp1d, ViewType &fn1d, const float64 sqrt3) {
-    const int istart = HALO_PTS - 2;
-    const int iend   = fn1d.extent(0) - HALO_PTS + 1;
-    //const int iend   = fn1d.extent(0) + HALO_PTS + 1;
+    const int istart = fn1d.begin(0) + HALO_PTS - 2;
+    const int iend   = fn1d.end(0)   - HALO_PTS + 1;
     const float64 alpha = sqrt3 - 2;
     const float64 beta  = sqrt3 * (1 - alpha * alpha);
 
-    //// Avoid contamination of the temporarly array
-    //for(int i=0; i<tmp1d.extent(0); i++) {
-    //  tmp1d(i) = 0;
-    //}
-     
     // fn[istart-1] stores the precomputed left sum
     tmp1d(istart) = fn1d(istart-1) + fn1d(istart);
     for(int nn = 1; istart + nn <= iend; nn++) {
@@ -66,10 +60,10 @@ namespace Spline {
   template <class ViewType>
   KOKKOS_INLINE_FUNCTION
   void getSplineCoeff2D(ViewType &tmp2d, ViewType &fn2d, float64 sqrt3, int check) {
-    const int ixstart = HALO_PTS - 2;
-    const int ixend   = fn2d.extent(0) - HALO_PTS + 1;
-    const int iystart = HALO_PTS - 2;
-    const int iyend   = fn2d.extent(1) - HALO_PTS + 1;
+    const int ixstart = fn2d.begin(0) + HALO_PTS - 2;
+    const int ixend   = fn2d.end(0)   - HALO_PTS + 1;
+    const int iystart = fn2d.begin(1) + HALO_PTS - 2;
+    const int iyend   = fn2d.end(1)   - HALO_PTS + 1;
 
     // Precomputed Right and left coefficients on each column and row
     // are already start in (*, xstart-1), (*, xend+1) locations
@@ -77,15 +71,15 @@ namespace Spline {
     
     // Compute spline coefficients using precomputed parts
     for(int iy = iystart - 1; iy <= iyend + 1; iy++) {
-      auto row     = Kokkos::subview(fn2d,  Kokkos::ALL, iy);
-      auto tmp_row = Kokkos::subview(tmp2d, Kokkos::ALL, iy);
+      auto row     = Kokkos::Experimental::subview(fn2d,  Kokkos::ALL, iy);
+      auto tmp_row = Kokkos::Experimental::subview(tmp2d, Kokkos::ALL, iy);
       getSplineCoeff1D(tmp_row, row, sqrt3);
       // row updated
     }
 
     for(int ix = ixstart; ix <= ixend; ix++) {
-      auto col     = Kokkos::subview(fn2d,  ix, Kokkos::ALL);
-      auto tmp_col = Kokkos::subview(tmp2d, ix, Kokkos::ALL);
+      auto col     = Kokkos::Experimental::subview(fn2d,  ix, Kokkos::ALL);
+      auto tmp_col = Kokkos::Experimental::subview(tmp2d, ix, Kokkos::ALL);
       getSplineCoeff1D(tmp_col, col, sqrt3);
       // col updated
     }
@@ -93,19 +87,25 @@ namespace Spline {
 
   struct spline_coef_2d {
     Config *conf_;
-    RealView4D fn_;    // transposed to (ivx, ivy, ix, iy) for xy and (ix, iy, ivx, ivy) for vxvy
-    RealView4D tmp4d_; // Buffer accessed as subviews
+    RealOffsetView4D fn_;    // transposed to (ivx, ivy, ix, iy) for xy and (ix, iy, ivx, ivy) for vxvy
+    RealOffsetView4D tmp4d_; // Buffer accessed as subviews
     float64 sqrt3_;
     int check_ = 1;
+    int n0_min_;
+    int n1_min_;
 
-    spline_coef_2d(Config *conf, RealView4D fn)
+    spline_coef_2d(Config *conf, RealOffsetView4D fn)
       : conf_(conf), fn_(fn) { 
       sqrt3_ = sqrt(3); 
-      int n0 = fn_.extent(0);
-      int n1 = fn_.extent(1);
-      int n2 = fn_.extent(2);
-      int n3 = fn_.extent(3);
-      tmp4d_ = RealView4D("tmp4d", n0, n1, n2, n3);
+      int n0_min = fn_.begin(0), n1_min = fn_.begin(1), n2_min = fn_.begin(2), n3_min = fn_.begin(3);
+      int n0_max = fn_.end(0)-1, n1_max = fn_.end(1)-1, n2_max = fn_.end(2)-1, n3_max = fn_.end(3) - 1;
+      tmp4d_ = RealOffsetView4D("tmp4d", 
+                                {n0_min, n0_max}, 
+                                {n1_min, n1_max}, 
+                                {n2_min, n2_max}, 
+                                {n3_min, n3_max});
+      n0_min_ = fn_.begin(0);
+      n1_min_ = fn_.begin(1);
     }
 
     ~spline_coef_2d() {
@@ -115,25 +115,31 @@ namespace Spline {
 
     KOKKOS_INLINE_FUNCTION
     void operator()(const int i0, const int i1) const {
-      auto sub_tmp = Kokkos::subview(tmp4d_, i0, i1, Kokkos::ALL, Kokkos::ALL);
-      auto sub_fn  = Kokkos::subview(fn_,    i0, i1, Kokkos::ALL, Kokkos::ALL);
+      auto sub_tmp = Kokkos::Experimental::subview(tmp4d_, i0+n0_min_, i1+n1_min_, Kokkos::ALL, Kokkos::ALL);
+      auto sub_fn  = Kokkos::Experimental::subview(fn_,    i0+n0_min_, i1+n1_min_, Kokkos::ALL, Kokkos::ALL);
 
       // 2D Spline interpolation
       getSplineCoeff2D(sub_tmp, sub_fn, sqrt3_, check_);
     }
   };
 
-  void computeCoeff_xy(Config *conf, RealView4D fn) {
+  void computeCoeff_xy(Config *conf, RealOffsetView4D fn) {
     int nx  = fn.extent(0);
     int ny  = fn.extent(1);
     int nvx = fn.extent(2);
     int nvy = fn.extent(3);
+    int nx_min = fn.begin(0), ny_min = fn.begin(1), nvx_min = fn.begin(2), nvy_min = fn.begin(3);
+    int nx_max = fn.end(0), ny_max = fn.end(1), nvx_max = fn.end(2), nvy_max = fn.end(3);
 
     Impl::Transpose<float64> transpose(nx*ny, nvx*nvy); 
-    RealView4D fn_trans = RealView4D("fn_trans", nvx, nvy, nx, ny);
+    RealOffsetView4D fn_trans = RealOffsetView4D("fn_trans", 
+                                                 {nvx_min, nvx_max-1}, 
+                                                 {nvy_min, nvy_max-1},
+                                                 {nx_min, nx_max-1}, 
+                                                 {ny_min, ny_max-1}
+                                                 );
     transpose.forward(fn.data(), fn_trans.data());
-
-    MDPolicyType_2D spline_xy_policy2d({{0, 0}},
+    MDPolicyType_2D spline_xy_policy2d({{0,  0}},
                                        {{nvx, nvy}},
                                        {{TILE_SIZE0, TILE_SIZE1}}
                                       );
@@ -141,11 +147,9 @@ namespace Spline {
     transpose.backward(fn_trans.data(), fn.data());
   }
 
-  // This is fine
-  void computeCoeff_vxvy(Config *conf, RealView4D fn) {
-    int nx  = fn.extent(0);
-    int ny  = fn.extent(1);
-    MDPolicyType_2D spline_vxvy_policy2d({{0, 0}},
+  void computeCoeff_vxvy(Config *conf, RealOffsetView4D fn) {
+    int nx = fn.extent(0), ny = fn.extent(1);
+    MDPolicyType_2D spline_vxvy_policy2d({{0,  0}},
                                          {{nx, ny}},
                                          {{TILE_SIZE0, TILE_SIZE1}}
                                         );

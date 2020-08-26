@@ -123,7 +123,7 @@ void Distrib::createDecomposition(Config *conf) {
     Update the recv_list
   Used once in init.cpp
  */
-void Distrib::neighboursList(Config *conf, RealView4D halo_fn) {
+void Distrib::neighboursList(Config *conf, RealOffsetView4D halo_fn) {
   const Domain& dom = conf->dom_;
   const int s_nxmax  = dom.nxmax_[0];
   const int s_nymax  = dom.nxmax_[1];
@@ -131,7 +131,7 @@ void Distrib::neighboursList(Config *conf, RealView4D halo_fn) {
   const int s_nvymax = dom.nxmax_[3];
 
   Urbnode &mynode = ulist_[pid_];
-  RealView4Dhost h_halo_fn = Kokkos::create_mirror_view(halo_fn);
+  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::Experimental::create_mirror_view(halo_fn);
 
   // Process periodic boundary condition to get a complete map
   for(int ivy = mynode.xmin_[3] - HALO_PTS; ivy < mynode.xmax_[3] + HALO_PTS + 1; ivy++) {
@@ -153,10 +153,7 @@ void Distrib::neighboursList(Config *conf, RealView4D halo_fn) {
                 && node.xmin_[2] <= jvx && jvx <= node.xmax_[2]
                 && node.xmin_[3] <= jvy && jvy <= node.xmax_[3]
                 ) {
-              h_halo_fn(ix  + HALO_PTS - mynode.xmin_[0],
-                        iy  + HALO_PTS - mynode.xmin_[1],
-                        ivx + HALO_PTS - mynode.xmin_[2],
-                        ivy + HALO_PTS - mynode.xmin_[3]) = static_cast<float64>(id);
+              h_halo_fn(ix, iy, ivx, ivy) = static_cast<float64>(id);
               notfound = 0;
             }
             id++;
@@ -219,7 +216,6 @@ void Distrib::neighboursList(Config *conf, RealView4D halo_fn) {
     int k1 = (k + 1) % 4;
     int k2 = (k + 2) % 4;
     int k3 = (k + 3) % 4;
-    // [TO DO] Rename this
     auto larger = [k0, k1, k2, k3](const Halo &a, const Halo &b) {
       if(a.pid_ == b.pid_) {
         if(a.xmin_[k0] == b.xmin_[k0]) {
@@ -357,89 +353,12 @@ void Distrib::bookHalo(Config *conf) {
 
   // Copy into Kokkos suited structure
   // Halo size large enough to store 
-  send_buffers_.set(conf, send_list_, "send", nbp_, pid_);
-  recv_buffers_.set(conf, recv_list_, "recv", nbp_, pid_);
+  send_buffers_ = new Halos();
+  recv_buffers_ = new Halos();
+  send_buffers_->set(conf, send_list_, "send", nbp_, pid_);
+  recv_buffers_->set(conf, recv_list_, "recv", nbp_, pid_);
 
   fprintf(stderr, "[%d] Number of halo blocs = %lu\n", pid_, send_list_.size());
-}
-
-/*
-  @biref Get a list of the neighbours of the local MPI subdomain. Input is halo_fn
-         that stores PIDs of the cells halo_fn(ivy,ivx,iy,ix). Ouput is hlist that
-         includes a list of halo boxes. The union of all the hlist's boxes represents
-         the actual halo of the local MPI subdomain.
-         called inside the neighboursList function
-  @param[in]  halo_fn[]
-    Identical to fn
-  @param[in]  xrange[8] 
-    face[8] = node.xmin[0], node.xmax[0] + 1, node.xmin[1], node.xmax[1] + 1, node.xmin[2], node.xmax[2] + 1, node.xmin[3], node.xmax[3] + 1}
-    where node = ulist_[pid]
-  @param[in]  lxmin[4]
-    mynode.xmin, where mynode = ulist_[pid]
-  @param[in]  lxmax[4]
-    mynode.xmax, where mynode = ulist_[pid]
-  @param[in]  count
-    the total loop count of the 4D loop over halo regions ranging (-1:2) in each direction
-  @param[inout] hlist
-    Indentical to recv_list
-
-  [Y. A comment] node and mynode seem to be identical, why distinguish?
-  std::vector<urbnode_t>& nodes = (conf->dis).ulist;
-  mynode = nodes[(conf->dis).pid]
-
-  uint32_t id = dis.pid;
-  node = nodes[id];
- */
-void Distrib::getNeighbours(const Config *conf, const RealView4Dhost halo_fn, int xrange[8],
-                            std::vector<Halo> &hlist, int lxmin[4], int lxmax[4], int count) {
-  std::vector<Halo> vhalo;
-  uint8 neighbours[nbp_];
-  uint32 nb_neib = 0;
-
-  for(uint32 j=0; j<nbp_; j++)
-    neighbours[j] = 255;
-
-  vhalo.clear();
-  for(int ivy = xrange[6]; ivy <= xrange[7]; ivy++) {
-    for(int ivx = xrange[4]; ivx <= xrange[5]; ivx++) {
-      for(int iy = xrange[2]; iy <= xrange[3]; iy++) {
-        for(int ix = xrange[0]; ix <= xrange[1]; ix++) {
-          const uint32 neibid = round(halo_fn(ix  + HALO_PTS - lxmin[0],
-                                              iy  + HALO_PTS - lxmin[1],
-                                              ivx + HALO_PTS - lxmin[2],
-                                              ivy + HALO_PTS - lxmin[3]));
-          if(neighbours[neibid] == 255) {
-            Halo myneib;
-            neighbours[neibid] = nb_neib;
-            myneib.pid_     = neibid;
-            myneib.xmin_[0] = ix;
-            myneib.xmin_[1] = iy;
-            myneib.xmin_[2] = ivx;
-            myneib.xmin_[3] = ivy;
-            myneib.xmax_[0] = ix;
-            myneib.xmax_[1] = iy;
-            myneib.xmax_[2] = ivx;
-            myneib.xmax_[3] = ivy;
-            myneib.tag_ = count;
-            for(int k = 0; k < 4; k++) {
-              myneib.lxmin_[k] = lxmin[k];
-              myneib.lxmax_[k] = lxmax[k];
-            }
-            vhalo.push_back(myneib);
-            nb_neib++;
-          }//if(neighbours[neibid] == 255)
-          uint8 neighbour = neighbours[neibid];
-          vhalo[neighbour].xmax_[0] = ix;
-          vhalo[neighbour].xmax_[1] = iy;
-          vhalo[neighbour].xmax_[2] = ivx;
-          vhalo[neighbour].xmax_[3] = ivy;
-        }//for(int32 ix = xrange[0]; ix <= xrange[1]; ix++)
-      }//for(int32 iy = xrange[2]; iy <= xrange[3]; iy++)
-    }//for(int32 ivx = xrange[4]; ivx <= xrange[5]; ivx++)
-  }//for(int32 ivy = xrange[6]; ivy <= xrange[7]; ivy++)
-
-  // [Y. A] Comment, can it be a very large array?
-  hlist.insert(hlist.end(), vhalo.begin(), vhalo.end());
 }
 
 /*
@@ -485,33 +404,33 @@ int Distrib::mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std
 }
 
 void Distrib::Isend(int &creq, std::vector<MPI_Request> &req) {
-  int nb_halos = send_buffers_.nb_merged_halos_;
-  int size_local_copy = send_buffers_.merged_size(pid_);
+  int nb_halos = send_buffers_->nb_merged_halos_;
+  int size_local_copy = send_buffers_->merged_size(pid_);
   for(int i = 0; i < nb_halos; i++) {
     if(i == pid_) {
       // Then local copy
       Kokkos::parallel_for("copy", size_local_copy, local_copy(send_buffers_, recv_buffers_));
     } else {
       // Then MPI communication
-      float64 *head  = send_buffers_.head(i);
-      const int size = send_buffers_.merged_size(i);
-      const int pid  = send_buffers_.merged_pid(i);
-      const int tag  = send_buffers_.merged_tag(i);
+      float64 *head  = send_buffers_->head(i);
+      const int size = send_buffers_->merged_size(i);
+      const int pid  = send_buffers_->merged_pid(i);
+      const int tag  = send_buffers_->merged_tag(i);
       MPI_Isend(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
     }
   }
 }
      
 void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
-  int nb_halos = recv_buffers_.nb_merged_halos_;
-  int size_local_copy = recv_buffers_.merged_size(pid_);
+  int nb_halos = recv_buffers_->nb_merged_halos_;
+  int size_local_copy = recv_buffers_->merged_size(pid_);
   for(int i = 0; i < nb_halos; i++) {
     if(i != pid_) {
       // Then MPI communication
-      float64 *head  = recv_buffers_.head(i);
-      const int size = recv_buffers_.merged_size(i);
-      const int pid  = recv_buffers_.merged_pid(i);
-      const int tag  = recv_buffers_.merged_tag(i);
+      float64 *head  = recv_buffers_->head(i);
+      const int size = recv_buffers_->merged_size(i);
+      const int pid  = recv_buffers_->merged_pid(i);
+      const int tag  = recv_buffers_->merged_tag(i);
       MPI_Irecv(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
     }
   }
@@ -525,14 +444,14 @@ void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
   @param[inout] halo_fn
     Indentical to fn?
  */
-void Distrib::packAndBoundary(Config *conf, RealView4D halo_fn) {
+void Distrib::packAndBoundary(Config *conf, RealOffsetView4D halo_fn) {
   if(spline_) {
-    const int nx_send  = send_buffers_.nhalo_max_[0];
-    const int ny_send  = send_buffers_.nhalo_max_[1];
-    const int nvx_send = send_buffers_.nhalo_max_[2];
-    const int nvy_send = send_buffers_.nhalo_max_[3];
-    const int nb_send_halos = send_buffers_.nb_halos_;
-    const int total_size = send_buffers_.total_size_;
+    const int nx_send  = send_buffers_->nhalo_max_[0];
+    const int ny_send  = send_buffers_->nhalo_max_[1];
+    const int nvx_send = send_buffers_->nhalo_max_[2];
+    const int nvy_send = send_buffers_->nhalo_max_[3];
+    const int nb_send_halos = send_buffers_->nb_halos_;
+    const int total_size = send_buffers_->total_size_;
     MDPolicyType_4D mdpolicy4d({{0, 0, 0, 0}},
                                {{nx_send, ny_send, nvx_send, nb_send_halos}},
                                {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
@@ -543,19 +462,14 @@ void Distrib::packAndBoundary(Config *conf, RealView4D halo_fn) {
     #if defined( KOKKOS_ENABLE_CUDA )
       Kokkos::parallel_for("boundary_condition", mdpolicy4d, boundary_condition(conf, halo_fn, send_buffers_));
     #else
-      // For some reason, 4d policy does not work on CPUs
       Kokkos::parallel_for("boundary_condition", nb_send_halos, boundary_condition(conf, halo_fn, send_buffers_));
     #endif
-    #ifdef CHECKSPLINE
-    Kokkos::parallel_for("boundary_condition_orig", mdpolicy4d, boundary_condition_orig(conf, halo_fn, send_buffers_));
-    #endif
-
     Kokkos::parallel_for("merged_pack", total_size, merged_pack(send_buffers_));
   }
 }
 
-void Distrib::unpack(RealView4D halo_fn) {
-  int total_size = recv_buffers_.total_size_;
+void Distrib::unpack(RealOffsetView4D halo_fn) {
+  int total_size = recv_buffers_->total_size_;
   Kokkos::parallel_for("merged_unpack", total_size, merged_unpack(halo_fn, recv_buffers_));
 }
 
@@ -570,11 +484,11 @@ void Distrib::unpack(RealView4D halo_fn) {
   [TO DO] names halo_fill_A and halo_fill_B should be renamed as halo_pack, halo_unpack
   This function is called inside the main loop
  */
-void Distrib::exchangeHalo(Config *conf, RealView4D halo_fn, std::vector<Timer*> &timers) {
+void Distrib::exchangeHalo(Config *conf, RealOffsetView4D halo_fn, std::vector<Timer*> &timers) {
   std::vector<MPI_Request> req;
   std::vector<MPI_Status>  stat;
   int nbreq = 0, creq = 0;
-  nbreq = recv_buffers_.nb_reqs() + send_buffers_.nb_reqs();
+  nbreq = recv_buffers_->nb_reqs() + send_buffers_->nb_reqs();
   creq  = 0;
   req.resize(nbreq);
   stat.resize(nbreq);
