@@ -67,21 +67,18 @@ void Diags::compute(Config *conf, Efield *ef, int iter)
 void Diags::computeL2norm(Config *conf, RealOffsetView4D fn, int iter)
 {
   const Domain *dom = &conf->dom_;
-  int nx = dom->local_nx_[0], ny = dom->local_nx_[1], nvx = dom->local_nx_[2], nvy = dom->local_nx_[3];
+  int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
+  int nx_max = dom->local_nxmax_[0]+1, ny_max = dom->local_nxmax_[1]+1, nvx_max = dom->local_nxmax_[2]+1, nvy_max = dom->local_nxmax_[3]+1;
 
   // Capturing a class member causes a problem
   // See https://github.com/kokkos/kokkos/issues/695
   float64 l2loc = 0.;
-  MDPolicyType_4D moment_policy4d({{0, 0, 0, 0}},
-                                  {{nx, ny, nvx, nvy}},
+  MDPolicyType_4D moment_policy4d({{nx_min, ny_min, nvx_min, nvy_min}},
+                                  {{nx_max, ny_max, nvx_max, nvy_max}},
                                   {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
                                  );
   Kokkos::parallel_reduce("l2norm", moment_policy4d, KOKKOS_LAMBDA (const int &ix, const int &iy, const int &ivx, const int &ivy, float64 &lsum) {
-    int jx  = ix  + HALO_PTS;
-    int jy  = iy  + HALO_PTS;
-    int jvx = ivx + HALO_PTS;
-    int jvy = ivy + HALO_PTS;
-    lsum += fn(jx, jy, jvx, jvy) * fn(jx, jy, jvx, jvy);
+    lsum += fn(ix, iy, ivx, ivy) * fn(ix, iy, ivx, ivy);
   }, l2loc);
 
   float64 l2glob = 0;
