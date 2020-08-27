@@ -105,88 +105,9 @@ namespace Advection {
     }
   #endif
   
-  static inline int interp_2D(const float64 tmp2d[], const float64 xstar[2],
-                              const float64 inv_dx[2], const float64 minPhyx[2],
-                              const float64 xmin[2], const float64 xmax[2],
-                              const int nx[2],
-                              float64 &interp) {
-    #ifdef LAG_ORDER
-      #ifdef LAG_ODD
-        int ipos1 = floor((xstar[0] - minPhyx[0]) * inv_dx[0]);
-        int ipos2 = floor((xstar[1] - minPhyx[1]) * inv_dx[1]);
-      #else
-        int ipos1 = round((xstar[0] - minPhyx[0]) * inv_dx[0]);
-        int ipos2 = round((xstar[1] - minPhyx[1]) * inv_dx[1]);
-      #endif
-      const float64 d_prev1 = LAG_OFFSET + inv_dx[0] * (xstar[0] - (minPhyx[0] + ipos1 * inv_dx[0]));
-      const float64 d_prev2 = LAG_OFFSET + inv_dx[1] * (xstar[1] - (minPhyx[1] + ipos2 * inv_dx[1]));
-
-      float64 coefx[LAG_PTS];
-      float64 coefy[LAG_PTS];
-      float64 ftmp = 0.;
-
-      ipos1 -= LAG_OFFSET;
-      ipos2 -= LAG_OFFSET;
-      lag_basis(d_prev1, coefx);
-      lag_basis(d_prev2, coefy);
-
-      if(ipos1 < xmin[0] - HALO_PTS || ipos1 > xmax[0] + HALO_PTS - LAG_ORDER)
-        return 1;
-      if(ipos2 < xmin[1] - HALO_PTS || ipos2 > xmax[1] + HALO_PTS - LAG_ORDER)
-        return 1;
-
-      for(int k2 = 0; k2 <= LAG_ORDER; k2++) {
-        for(int k1 = 0; k1 <= LAG_ORDER; k1++) {
-          int jx = ipos1 + k1 - xmin[0] + HALO_PTS;
-          int jy = ipos2 + k2 - xmin[1] + HALO_PTS;
-          ftmp += coefx[k1] * coefy[k2] * tmp2d[Index::coord_2D2int(jx, jy, nx[0], nx[1])];
-        }
-      }
-      interp = ftmp;
-      return 0;
-    #else
-      const float64 fx = (xstar[0] - minPhyx[0]) * inv_dx[0];
-      const float64 fy = (xstar[1] - minPhyx[1]) * inv_dx[1];
-      const int ix = floor(fx);
-      const int iy = floor(fy);
-      const float64 wx = fx - static_cast<float64>(ix);
-      const float64 wy = fy - static_cast<float64>(iy);
-
-      const float64 etax3 = (1./6.) * wx * wx * wx;
-      const float64 etax0 = (1./6.) + 0.5  * wx * (wx-1.) - etax3;
-      const float64 etax2 = wx + etax0 - 2. * etax3;
-      const float64 etax1 = 1. - etax0 - etax2 - etax3;
-      const float64 etax[4] = {etax0, etax1, etax2, etax3};
-
-      const float64 etay3 = (1./6.) * wy * wy * wy;
-      const float64 etay0 = (1./6.) + 0.5 * wy * (wy - 1.) - etay3;
-      const float64 etay2 = wy + etay0 - 2. * etay3;
-      const float64 etay1 = 1. - etay0 - etay2 - etay3;
-      const float64 etay[4] = {etay0, etay1, etay2, etay3};
-
-      if(ix < xmin[0] - 1 || ix > xmax[0])
-        return 1;
-      if(iy < xmin[1] - 1 || iy > xmax[1])
-        return 1;
-      float64 ftmp = 0.;
-
-      for(int jy = 0; jy <= 3; jy++) {
-        float64 sum = 0.;
-        for(int jx = 0; jx <= 3; jx++) {
-          sum += etax[jx] * tmp2d[Index::coord_2D2int(ix - 1 + jx - xmin[0] + HALO_PTS, 
-                                                      iy - 1 + jy - xmin[1] + HALO_PTS, 
-                                                      nx[0], nx[1])];
-        }
-        ftmp += etay[jy] * sum;
-      }
-      interp = ftmp;
-      return 0;
-    #endif
-  }
-
   static inline int interp_2D(const RealView4D &fn_tmp, const float64 xstar[2],
                               const float64 inv_dx[2], const float64 minPhy[2],
-                              const float64 xmin[2], const float64 xmax[2],
+                              const int xmin[2], const int xmax[2],
                               const int indices[2], float64 &interp) {
     #ifdef LAG_ORDER
       #ifdef LAG_ODD
@@ -430,8 +351,8 @@ namespace Advection {
 
     const float64 inv_dx[2] = {1./dx, 1./dy};
     const float64 minPhy[2] = {dom->minPhy_[0], dom->minPhy_[1]};
-    const float64 xmin[2]   = {dom->local_nxmin_[0], dom->local_nxmin_[1]};
-    const float64 xmax[2]   = {dom->local_nxmax_[0], dom->local_nxmax_[1]};
+    const int xmin[2]   = {dom->local_nxmin_[0], dom->local_nxmin_[1]};
+    const int xmax[2]   = {dom->local_nxmax_[0], dom->local_nxmax_[1]};
     shape_nd<DIMENSION> shape_halo;
     shape_nd<DIMENSION> nxmin_halo;
     for(int i=0; i<DIMENSION; i++)
@@ -482,7 +403,7 @@ namespace Advection {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-    advect_2D_xy_(Config *conf, RealView4D &fn, float64 dt) {
+    advect_2d_xy_(Config *conf, RealView4D &fn, float64 dt) {
     Domain *dom = &(conf->dom_);
     const float64 minPhyx  = dom->minPhy_[0];
     const float64 minPhyy  = dom->minPhy_[1];
@@ -503,8 +424,8 @@ namespace Advection {
 
     const float64 inv_dx[2] = {1./dx, 1./dy};
     const float64 minPhy[2] = {dom->minPhy_[0], dom->minPhy_[1]};
-    const float64 xmin[2]   = {dom->local_nxmin_[0], dom->local_nxmin_[1]};
-    const float64 xmax[2]   = {dom->local_nxmax_[0], dom->local_nxmax_[1]};
+    const int xmin[2]   = {dom->local_nxmin_[0], dom->local_nxmin_[1]};
+    const int xmax[2]   = {dom->local_nxmax_[0], dom->local_nxmax_[1]};
     shape_nd<DIMENSION> shape_halo;
     shape_nd<DIMENSION> nxmin_halo;
     for(int i=0; i<DIMENSION; i++)
@@ -549,7 +470,7 @@ namespace Advection {
     testError(err);
   }
 
-  // Layout Left
+  // Layout left
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutLeft>>::value, void>::type

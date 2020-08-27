@@ -170,7 +170,7 @@ namespace Spline {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  computeCoeff(RealView4D &fn) {
+  computeCoeff(RealView4D &fn, RealView4D &fn_tmp) {
     const float64 sqrt3 = sqrt(3);
     const int n0_min = fn.begin(0), n0_max = fn.end(0);
     const int n1_min = fn.begin(1), n1_max = fn.end(1);

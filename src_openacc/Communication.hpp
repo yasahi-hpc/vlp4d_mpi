@@ -76,6 +76,7 @@ struct Halos{
   std::vector<int> merged_heads_;
   int total_size_; // total size of all the buffers
   int nb_merged_halos_; // number of halos after merge
+  int nb_nocomms_;
 
 public:
   // Constructor and destructor
@@ -109,10 +110,11 @@ public:
     return merged_tags_.at(i);
   }
      
-  int nb_reqs(){ return (nbp_ - 1); }
+  int nb_reqs(){ return (nbp_ - nb_nocomms_); }
   int nb_halos(){ return nb_halos_; } 
 
   void mergeLists(Config *conf, const std::string name) {
+    nb_nocomms_ = 1; // communication with same pid is a local copy
     int total_size = 0;
     std::vector<int> id_map( nb_halos_ );
     std::vector< std::vector<int> > group_same_dst;
@@ -131,7 +133,13 @@ public:
 
       // Save merged data for current pid
       int size = 0;
-      int tag = tags_[same_dst[0]]; // Use the tag of first element
+      int tag  = 0;
+
+      if(same_dst.empty()) {
+        if(pid != pid_) nb_nocomms_++;
+      } else {
+        tag = tags_[same_dst[0]]; // Use the tag of first element
+      }
       for(auto it: same_dst) {
         id_map.at(it) = total_size + size;
         size += sizes_[it];

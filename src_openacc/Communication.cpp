@@ -489,11 +489,13 @@ void Distrib::Isend(int &creq, std::vector<MPI_Request> &req) {
       const int size = send_buffers_->merged_size(i);
       const int pid  = send_buffers_->merged_pid(i);
       const int tag  = send_buffers_->merged_tag(i);
-      #if defined( ENABLE_OPENACC )
-        #pragma acc data present(head)
-        #pragma acc host_data use_device(head)
-      #endif
-      MPI_Isend(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
+      if(size != 0 ) {
+        #if defined( ENABLE_OPENACC )
+          #pragma acc data present(head)
+          #pragma acc host_data use_device(head)
+        #endif
+        MPI_Isend(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
+      }
     }
   }
 }
@@ -508,11 +510,13 @@ void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
       const int size = recv_buffers_->merged_size(i);
       const int pid  = recv_buffers_->merged_pid(i);
       const int tag  = recv_buffers_->merged_tag(i);
-      #if defined( ENABLE_OPENACC )
-        #pragma acc data present(head)
-        #pragma acc host_data use_device(head)
-      #endif
-      MPI_Irecv(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
+      if(size != 0 ) {
+        #if defined( ENABLE_OPENACC )
+          #pragma acc data present(head)
+          #pragma acc host_data use_device(head)
+        #endif
+        MPI_Irecv(head, size, MPI_DOUBLE, pid, tag, MPI_COMM_WORLD, &(req[creq++]));
+      }
     }
   }
 }
