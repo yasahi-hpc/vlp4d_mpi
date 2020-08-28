@@ -314,8 +314,8 @@ namespace Spline {
     const int nvy = nvy_max - nvy_min;
 
     #if defined( ENABLE_OPENACC )
-      RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       #pragma acc data present(fn, fn_trans, fn_tmp)
       {
@@ -324,7 +324,7 @@ namespace Spline {
         transpose.backward(fn_trans.data(), fn.data());
       }
     #else
-      RealView4D fn_tmp = RealView4D("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
+      RealView4D fn_tmp("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
       computeCoeff<array_layout::value>(fn, fn_tmp);
     #endif
   }
@@ -351,11 +351,11 @@ namespace Spline {
     const int nvy = nvy_max - nvy_min;
 
     #if defined( ENABLE_OPENACC )
-      RealView4D fn_tmp = RealView4D("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
+      RealView4D fn_tmp("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
       computeCoeff<array_layout::value>(fn, fn_tmp);
     #else
-      RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       transpose.forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
@@ -384,11 +384,11 @@ namespace Spline {
     const int nvy = nvy_max - nvy_min;
 
     #if defined( ENABLE_OPENACC )
-      RealView4D fn_tmp = RealView4D("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
+      RealView4D fn_tmp("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
       computeCoeff<array_layout::value>(fn, fn_tmp);
     #else
-      RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       transpose.forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
@@ -417,14 +417,14 @@ namespace Spline {
     const int nvy = nvy_max - nvy_min;
 
     #if defined( ENABLE_OPENACC )
-      RealView4D fn_trans = RealView4D("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      RealView4D fn_tmp   = RealView4D("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
+      RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       transpose.forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
       transpose.backward(fn_trans.data(), fn.data());
     #else
-      RealView4D fn_tmp = RealView4D("fn_tmp",  {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
+      RealView4D fn_tmp("fn_tmp",  {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
       computeCoeff<array_layout::value>(fn, fn_tmp);
     #endif
   }

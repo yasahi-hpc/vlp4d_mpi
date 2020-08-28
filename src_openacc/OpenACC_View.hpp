@@ -192,19 +192,19 @@ public:
   }
 
   ~View() {
-    if(! is_empty_) {
-      #if defined( ENABLE_OPENACC )
-        // In case, this is not a copy, deallocate the data
-        if(!is_copied_) {
+    if(!is_empty_) {
+      // In case, this is not a copy, deallocate the data
+      if(!is_copied_) {
+        #if defined( ENABLE_OPENACC )
           #pragma acc exit data delete(data_[0:size_], strides_[0:dims_]) // detach data
-          if(data_ != nullptr) delete [] data_;
-          if(strides_  != nullptr) delete [] strides_;
+          #pragma acc exit data delete(this) // delete this pointer
+        #endif
+        if(data_    != nullptr) delete [] data_;
+        if(strides_ != nullptr) delete [] strides_;
 
-          data_     = nullptr;
-          strides_  = nullptr;
-        }
-        #pragma acc exit data delete(this) // delete this pointer
-      #endif
+        data_     = nullptr;
+        strides_  = nullptr;
+      }
     }
   }
 

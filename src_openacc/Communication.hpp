@@ -24,7 +24,7 @@ struct Urbnode{
   // Number of processes
   int nbp_;
   
-  // ID of the MPI process ([Y. A comment] duplicated???)
+  // ID of the MPI process
   int pid_;
 };
 
@@ -270,7 +270,10 @@ public:
     nhalo_max_[2] = *std::max_element(nvx_halos.begin(), nvx_halos.end());
     nhalo_max_[3] = *std::max_element(nvy_halos.begin(), nvy_halos.end());
     
-    buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
+    if(name == "send") {
+      // 2D Buffer is used only for send buffer [TO DO] delete this
+      buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
+    }
     mergeLists(conf, name);
   }
 };
