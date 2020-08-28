@@ -63,7 +63,7 @@ void Diags::computeL2norm(Config *conf, RealView4D &fn, int iter) {
     for(int ivx = nvx_min; ivx <= nvx_max; ivx++) {
       for(int iy = ny_min; iy <= ny_max; iy++) {
         for(int ix = nx_min; ix <= nx_max; ix++) {
-          l2loc += fn(ix, iy, ivx, ivy);
+          l2loc += fn(ix, iy, ivx, ivy) * fn(ix, iy, ivx, ivy);
         }
       }
     }

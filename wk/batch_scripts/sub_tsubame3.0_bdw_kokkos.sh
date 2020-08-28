@@ -9,4 +9,4 @@ module load openmpi/3.1.4-opa10.10-t3
 module load fftw
 
 export OMP_NUM_THREADS=7
-mpirun -npernode 4 -np 8 -x PATH -x LD_LIBRARY_PATH ./vlp4d.bdw_kokkos --num_threads 7 --teams 1 -f SLD10.dat
+mpirun -npernode 4 -np 8 -x PATH -x LD_LIBRARY_PATH ./vlp4d.tsubame3.0_bdw_kokkos --num_threads 7 --teams 1 -f SLD10.dat
