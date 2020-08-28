@@ -55,7 +55,7 @@ void Diags::computeL2norm(Config *conf, RealView4D &fn, int iter) {
   float64 l2loc = 0.;
   #if defined( ENABLE_OPENACC )
     #pragma acc data present(fn)
-    #pragma acc parallel loop collapse(2) reduction(+:l2loc)
+    #pragma acc parallel loop collapse(4) reduction(+:l2loc)
   #else
     #pragma omp parallel for collapse(3) reduction(+:l2loc)
   #endif 

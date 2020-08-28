@@ -361,7 +361,7 @@ namespace Advection {
       shape_halo[i] = dom->local_nxmax_[i] - dom->local_nxmin_[i] + HALO_PTS*2 + 1;
 
     // Allocate 4D data structures with Offsets
-    RealView4D fn_tmp = RealView4D("fn_tmp", shape_halo, nxmin_halo);
+    RealView4D fn_tmp("fn_tmp", shape_halo, nxmin_halo);
     Impl::deep_copy(fn_tmp, fn);
 
     int err = 0;
@@ -434,7 +434,7 @@ namespace Advection {
       shape_halo[i] = dom->local_nxmax_[i] - dom->local_nxmin_[i] + HALO_PTS*2 + 1;
 
     // Allocate 4D data structures with Offsets
-    RealView4D fn_tmp = RealView4D("fn_tmp", shape_halo, nxmin_halo);
+    RealView4D fn_tmp("fn_tmp", shape_halo, nxmin_halo);
     Impl::deep_copy(fn_tmp, fn);
 
     int err = 0;

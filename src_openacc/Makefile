@@ -25,6 +25,15 @@ LDFLAGS = -lm -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -qopenmp -lstdc+
 TARGET = vlp4d.pacs_knl_openmp
 endif
 
+# Fujitsu A64FX on Flow (Nagoya Univ, Japan)
+ifneq (, $(findstring a64fx_flow,$(DEVICES)))
+#Fujitsu
+CXX = mpiFCCpx
+CXXFLAGS = -O3 -g -std=c++11 -Kfast,openmp,optmsg=2 -Nlst=t -DLAYOUT_LEFT -Krestp=all
+LDFLAGS  = -Kfast,openmp -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstdc++
+TARGET   = vlp4d.flow_a64fx_openmp
+endif
+
 # Linker
 LINKER = $(CXX)
 	         
@@ -50,4 +59,4 @@ $(TARGET) : $(OBJS)
 .PHONY: clean
 					     
 clean:
-	rm -f *.o $(TARGET) ../wk/$(TARGET)
+	rm -f *.o *.lst $(TARGET) ../wk/$(TARGET)
