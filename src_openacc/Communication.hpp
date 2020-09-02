@@ -46,6 +46,7 @@ struct Halo{
 // In Kokkos, we manage all the halos in a single data structure
 struct Halos{
   typedef View<int, 2, array_layout::value> RangeView2D;
+  typedef View<int, 3, array_layout::value> RangeView3D;
   RealView2D buf_;
   RealView1D buf_flatten_;
   RangeView2D xmin_;
@@ -65,15 +66,26 @@ struct Halos{
   std::vector<int> pids_;
   std::vector<int> tags_;
 
+  /* Used for boundary condition */
+  RangeView3D map_bc_;  // f -> flatten_buf (used for send buffers)
+  RangeView2D map_orc_; // f -> flatten_buf (used for send buffers)
+  RangeView3D sign1_;       
+  RangeView3D sign2_;       
+  RangeView3D sign3_;       
+  RangeView3D sign4_;       
+  IntView1D   orcsum_;      
+
   /* Used for merge */
   RangeView2D map_;         // f -> flatten_buf
   IntView2D   flatten_map_; // buf -> flatten_buf
+
   int offset_local_copy_;   // The head address for the local copy
   std::vector<int> merged_sizes_; // buffer size of each halo
   std::vector<int> merged_pids_; // merged process id to interact with
   std::vector<int> merged_tags_; //
   std::vector<int> id_map_; // mapping the original id to the merged id
   std::vector<int> merged_heads_;
+  std::vector<int> total_size_orc_;
   int total_size_; // total size of all the buffers
   int nb_merged_halos_; // number of halos after merge
   int nb_nocomms_;
@@ -113,7 +125,325 @@ public:
   int nb_reqs(){ return (nbp_ - nb_nocomms_); }
   int nb_halos(){ return nb_halos_; } 
 
-  void mergeLists(Config *conf, const std::string name) {
+  void listBoundary(Config *conf, const std::string name, IntView2D &map_2D2flatten) {
+    const Domain *dom = &(conf->dom_);
+    int nx = dom->nxmax_[0], ny = dom->nxmax_[1], nvx = dom->nxmax_[2], nvy = dom->nxmax_[3];
+    const int nx_min  = dom->local_nxmin_[0] - HALO_PTS;
+    const int ny_min  = dom->local_nxmin_[1] - HALO_PTS;
+    const int nvx_min = dom->local_nxmin_[2] - HALO_PTS;
+    const int nvy_min = dom->local_nxmin_[3] - HALO_PTS;
+    const int nx_max  = dom->local_nxmax_[0] + 1 + HALO_PTS;
+    const int ny_max  = dom->local_nxmax_[1] + 1 + HALO_PTS;
+    const int nvx_max = dom->local_nxmax_[2] + 1 + HALO_PTS;
+    const int nvy_max = dom->local_nxmax_[3] + 1 + HALO_PTS;
+    int bc_sign[8];
+    for(int k = 0; k < DIMENSION; k++) {
+      bc_sign[2 * k + 0] = -1;
+      bc_sign[2 * k + 1] = 1;
+    }
+
+    sign1_   = RangeView3D(name + "_sign1",   total_size_, DIMENSION, DIMENSION);
+    sign2_   = RangeView3D(name + "_sign2",   total_size_, DIMENSION, DIMENSION);
+    sign3_   = RangeView3D(name + "_sign3",   total_size_, DIMENSION, DIMENSION);
+    sign4_   = RangeView3D(name + "_sign4",   total_size_, DIMENSION, DIMENSION);
+    map_orc_ = RangeView2D(name + "_map_orc", total_size_, DIMENSION);
+    map_bc_  = RangeView3D(name + "_map_bc",  total_size_, DIMENSION, DIMENSION);
+    map_orc_.fill(0); map_bc_.fill(0);
+    sign1_.fill(0); sign2_.fill(0); sign3_.fill(0); sign4_.fill(0);
+
+    int count0 = 0, count1 = 0, count2 = 0, count3 = 0;
+    for(int ib = 0; ib < nb_halos_; ib++) {
+      int halo_min[4], halo_max[4];
+      for(int k = 0; k < DIMENSION; k++) {
+        halo_min[k] = xmin_(ib, k);
+        halo_max[k] = xmax_(ib, k);
+      }
+       
+      const int halo_nx =  halo_max[0] - halo_min[0] + 1;
+      const int halo_ny  = halo_max[1] - halo_min[1] + 1;
+      const int halo_nvx = halo_max[2] - halo_min[2] + 1;
+      const int halo_nvy = halo_max[3] - halo_min[3] + 1;
+
+      int bc_in[8], orcheck[4];
+      int orcsum = 0;
+      char bitconf = 0;
+
+      for(int k = 0; k < 4; k++) {
+        bc_in[2 * k + 0] = bc_in_min_(ib, k);
+        bc_in[2 * k + 1] = bc_in_max_(ib, k);
+        orcheck[k] = (bc_in[2 * k] != VUNDEF) || (bc_in[2 * k + 1] != VUNDEF);
+        orcsum += orcheck[k];
+        bitconf |= 1 << k;
+      }
+
+      int sign1[4], sign2[4], sign3[4], sign4[4];
+      for(int k1 = 0; k1 < 8; k1++) {
+        if(bc_in[k1] != VUNDEF) {
+          int vdx[4], vex[4];
+          for(int ii = 0; ii < 4; ii++) {
+            sign1[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+            if(ii == k1/2)
+              sign1[ii] = bc_sign[k1], vdx[ii] = bc_in[k1], vex[ii] = bc_in[k1];
+          }
+
+          for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+            for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+              for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                  int rx  = (nx  + jx  - sign1[0]) % nx;
+                  int ry  = (ny  + jy  - sign1[1]) % ny;
+                  int rvx = (nvx + jvx - sign1[2]) % nvx;
+                  int rvy = (nvy + jvy - sign1[3]) % nvy;
+                  for(int ii = 0; ii < 4; ii++) {
+                    sign1_(count0, 0, ii) = sign1[ii];
+                  }
+                  map_bc_(count0, 0, 0) = rx;
+                  map_bc_(count0, 0, 1) = ry;
+                  map_bc_(count0, 0, 2) = rvx;
+                  map_bc_(count0, 0, 3) = rvy;
+                  int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                jy  - halo_min[1],
+                                                jvx - halo_min[2],
+                                                jvy - halo_min[3],
+                                                halo_nx, halo_ny, halo_nvx, halo_nvy);
+                  map_orc_(count0, 0) = map_2D2flatten(idx, ib); //index in 2D buffer 
+                  assert(map_2D2flatten(idx, ib) < total_size_);
+
+                  for(int j1 = 1; j1 <= MMAX; j1++) {
+                    assert( (rx  + sign1_(count0, 0, 0) * j1) >= nx_min  );
+                    assert( (ry  + sign1_(count0, 0, 1) * j1) >= ny_min  );
+                    assert( (rvx + sign1_(count0, 0, 2) * j1) >= nvx_min );
+                    assert( (rvy + sign1_(count0, 0, 3) * j1) >= nvy_min );
+                    
+                    assert( (rx  + sign1_(count0, 0, 0) * j1) < nx_max  );
+                    assert( (ry  + sign1_(count0, 0, 1) * j1) < ny_max  );
+                    assert( (rvx + sign1_(count0, 0, 2) * j1) < nvx_max );
+                    assert( (rvy + sign1_(count0, 0, 3) * j1) < nvy_max );
+                  }
+                  count0++;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if(orcsum > 1) {
+        for(int k1 = 0; k1 < 8; k1++) {
+          for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++) {
+            if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF) {
+              int vdx[4], vex[4];
+              for(int ii = 0; ii < 4; ii++) {
+                sign1[ii] = 0, sign2[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+                if(ii == k1/2)
+                  sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
+                if(ii == k2/2)
+                  sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
+              }
+
+              for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+                for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+                  for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                    for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                      int rx  = (nx  + jx  - sign1[0] - sign2[0]) % nx;
+                      int ry  = (ny  + jy  - sign1[1] - sign2[1]) % ny;
+                      int rvx = (nvx + jvx - sign1[2] - sign2[2]) % nvx;
+                      int rvy = (nvy + jvy - sign1[3] - sign2[3]) % nvy;
+                      for(int ii = 0; ii < 4; ii++) {
+                        sign1_(count1, 1, ii) = sign1[ii];
+                        sign2_(count1, 1, ii) = sign2[ii];
+                      }
+                      map_bc_(count1, 1, 0) = rx;
+                      map_bc_(count1, 1, 1) = ry;
+                      map_bc_(count1, 1, 2) = rvx;
+                      map_bc_(count1, 1, 3) = rvy;
+                      int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                    jy  - halo_min[1],
+                                                    jvx - halo_min[2],
+                                                    jvy - halo_min[3],
+                                                    halo_nx, halo_ny, halo_nvx, halo_nvy);
+                                                                   
+                      map_orc_(count1, 1) = map_2D2flatten(idx, ib); //index in 2D buffer 
+                      assert(map_2D2flatten(idx, ib) < total_size_);
+                      for(int j2 = 1; j2 <= MMAX; j2++) {
+                        for(int j1 = 1; j1 <= MMAX; j1++) {
+                          assert( (rx  + sign1_(count1, 1, 0) * j1 + sign2_(count1, 1, 0) * j2) >= nx_min );
+                          assert( (ry  + sign1_(count1, 1, 1) * j1 + sign2_(count1, 1, 1) * j2) >= ny_min );
+                          assert( (rvx + sign1_(count1, 1, 2) * j1 + sign2_(count1, 1, 2) * j2) >= nvx_min );
+                          assert( (rvy + sign1_(count1, 1, 3) * j1 + sign2_(count1, 1, 3) * j2) >= nvy_min );
+                        
+                          assert( (rx  + sign1_(count1, 1, 0) * j1 + sign2_(count1, 1, 0) * j2) <  nx_max );
+                          assert( (ry  + sign1_(count1, 1, 1) * j1 + sign2_(count1, 1, 1) * j2) <  ny_max );
+                          assert( (rvx + sign1_(count1, 1, 2) * j1 + sign2_(count1, 1, 2) * j2) <  nvx_max );
+                          assert( (rvy + sign1_(count1, 1, 3) * j1 + sign2_(count1, 1, 3) * j2) <  nvy_max );
+                        }
+                      }
+                      count1++;
+                    }
+                  }
+                }
+              }
+            } // if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF)
+          } // for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++)
+        } // for(int k1 = 0; k1 < 8; k1++)
+      } // if(orcsum > 1)
+
+      if(orcsum > 2) {
+        for(int k1 = 0; k1 < 8; k1++) {
+          for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++) {
+            for(int k3 = 2 * (1 + k2/2); k3 < 8; k3++) {
+              if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF && bc_in[k3] != VUNDEF) {
+                int vdx[4], vex[4];
+                for(int ii = 0; ii < 4; ii++) {
+                  sign1[ii] = 0, sign2[ii] = 0, sign3[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+                  if(ii == k1/2)
+                    sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
+                  if(ii == k2/2)
+                    sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
+                  if(ii == k3/2)
+                    sign3[ii] = bc_sign[k3], vex[ii] = vdx[ii] = bc_in[k3];
+                }
+
+                for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+                  for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+                    for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                      for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                        int rx  = (nx  + jx  - sign1[0] - sign2[0] - sign3[0]) % nx;
+                        int ry  = (ny  + jy  - sign1[1] - sign2[1] - sign3[1]) % ny;
+                        int rvx = (nvx + jvx - sign1[2] - sign2[2] - sign3[2]) % nvx;
+                        int rvy = (nvy + jvy - sign1[3] - sign2[3] - sign3[3]) % nvy;
+                        for(int ii = 0; ii < 4; ii++) {
+                          sign1_(count2, 2, ii) = sign1[ii];
+                          sign2_(count2, 2, ii) = sign2[ii];
+                          sign3_(count2, 2, ii) = sign3[ii];
+                        }
+                        map_bc_(count2, 2, 0) = rx;
+                        map_bc_(count2, 2, 1) = ry;
+                        map_bc_(count2, 2, 2) = rvx;
+                        map_bc_(count2, 2, 3) = rvy;
+                        int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                      jy  - halo_min[1],
+                                                      jvx - halo_min[2],
+                                                      jvy - halo_min[3],
+                                                      halo_nx, halo_ny, halo_nvx, halo_nvy);
+
+                        map_orc_(count2, 2) = map_2D2flatten(idx, ib); //index in 2D buffer 
+                        assert(map_2D2flatten(idx, ib) < total_size_);
+                        for(int j3 = 1; j3 <= MMAX; j3++) {
+                          for(int j2 = 1; j2 <= MMAX; j2++) {
+                            for(int j1 = 1; j1 <= MMAX; j1++) {
+                              assert( (rx  + sign1_(count2, 2, 0) * j1 + sign2_(count2, 2, 0) * j2 + sign3_(count2, 2, 0) * j3) >= nx_min );
+                              assert( (ry  + sign1_(count2, 2, 1) * j1 + sign2_(count2, 2, 1) * j2 + sign3_(count2, 2, 1) * j3) >= ny_min );
+                              assert( (rvx + sign1_(count2, 2, 2) * j1 + sign2_(count2, 2, 2) * j2 + sign3_(count2, 2, 2) * j3) >= nvx_min );
+                              assert( (rvy + sign1_(count2, 2, 3) * j1 + sign2_(count2, 2, 3) * j2 + sign3_(count2, 2, 3) * j3) >= nvy_min );
+                                              
+                              assert( (rx  + sign1_(count2, 2, 0) * j1 + sign2_(count2, 2, 0) * j2 + sign3_(count2, 2, 0) * j3) <  nx_max );
+                              assert( (ry  + sign1_(count2, 2, 1) * j1 + sign2_(count2, 2, 1) * j2 + sign3_(count2, 2, 1) * j3) <  ny_max );
+                              assert( (rvx + sign1_(count2, 2, 2) * j1 + sign2_(count2, 2, 2) * j2 + sign3_(count2, 2, 2) * j3) <  nvx_max );
+                              assert( (rvy + sign1_(count2, 2, 3) * j1 + sign2_(count2, 2, 3) * j2 + sign3_(count2, 2, 3) * j3) <  nvy_max );
+                            }
+                          }
+                        }
+                        count2++;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if(orcsum > 3) {
+        for(int k1 = 0; k1 < 2; k1++) {
+          for(int k2 = 2; k2 < 4; k2++) {
+            for(int k3 = 4; k3 < 6; k3++) {
+              for(int k4 = 6; k4 < 8; k4++) {
+                if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF && bc_in[k3] != VUNDEF && bc_in[k4] != VUNDEF) {
+                  int vdx[4], vex[4];
+                  for(int ii = 0; ii < 4; ii++) {
+                    sign1[ii] = 0, sign2[ii] = 0, sign3[ii] = 0, sign4[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+                    if(ii == k1/2)
+                      sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
+                    if(ii == k2/2)
+                      sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
+                    if(ii == k3/2)
+                      sign3[ii] = bc_sign[k3], vex[ii] = vdx[ii] = bc_in[k3];
+                    if(ii == k4/2)
+                      sign4[ii] = bc_sign[k4], vex[ii] = vdx[ii] = bc_in[k4];
+                  }
+
+                  for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+                    for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+                      for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                        for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                          int rx  = (nx  + jx  - sign1[0]) % nx;
+                          int ry  = (ny  + jy  - sign2[1]) % ny;
+                          int rvx = (nvx + jvx - sign3[2]) % nvx;
+                          int rvy = (nvy + jvy - sign4[3]) % nvy;
+                          for(int ii = 0; ii < 4; ii++) {
+                            sign1_(count3, 3, ii) = sign1[ii];
+                            sign2_(count3, 3, ii) = sign2[ii];
+                            sign3_(count3, 3, ii) = sign3[ii];
+                            sign4_(count3, 3, ii) = sign4[ii];
+                          }
+                          map_bc_(count3, 3, 0) = rx;
+                          map_bc_(count3, 3, 1) = ry;
+                          map_bc_(count3, 3, 2) = rvx;
+                          map_bc_(count3, 3, 3) = rvy;
+                          int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                        jy  - halo_min[1],
+                                                        jvx - halo_min[2],
+                                                        jvy - halo_min[3],
+                                                        halo_nx, halo_ny, halo_nvx, halo_nvy);
+                          map_orc_(count3, 3) = map_2D2flatten(idx, ib); //index in 2D buffer 
+                          assert(map_2D2flatten(idx, ib) < total_size_);
+                           
+                          for(int j4 = 1; j4 <= MMAX; j4++) {
+                            for(int j3 = 1; j3 <= MMAX; j3++) {
+                              for(int j2 = 1; j2 <= MMAX; j2++) {
+                                for(int j1 = 1; j1 <= MMAX; j1++) {
+                                  assert( (rx  + sign1_(count3, 3, 0) * j1) >= nx_min );
+                                  assert( (ry  + sign2_(count3, 3, 1) * j2) >= ny_min );
+                                  assert( (rvx + sign3_(count3, 3, 2) * j3) >= nvx_min );
+                                  assert( (rvy + sign4_(count3, 3, 3) * j4) >= nvy_min );
+                                  
+                                  assert( (rx  + sign1_(count3, 3, 0) * j1) <  nx_max );
+                                  assert( (ry  + sign2_(count3, 3, 1) * j2) <  ny_max );
+                                  assert( (rvx + sign3_(count3, 3, 2) * j3) <  nvx_max );
+                                  assert( (rvy + sign4_(count3, 3, 3) * j4) <  nvy_max );
+                                }
+                              }
+                            }
+                          }
+                          count3++;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } // for(int ib = 0; ib < nb_halos_; ib++)
+
+    total_size_orc_.at(0) = count0;
+    total_size_orc_.at(1) = count1;
+    total_size_orc_.at(2) = count2;
+    total_size_orc_.at(3) = count3;
+    
+    map_bc_.updateDevice();
+    map_orc_.updateDevice();
+    sign1_.updateDevice();
+    sign2_.updateDevice();
+    sign3_.updateDevice();
+    sign4_.updateDevice();
+  }
+
+  void mergeLists(Config *conf, const std::string name, IntView2D map_2D2flatten) {
     nb_nocomms_ = 1; // communication with same pid is a local copy
     int total_size = 0;
     std::vector<int> id_map( nb_halos_ );
@@ -136,7 +466,7 @@ public:
       int tag  = 0;
 
       if(same_dst.empty()) {
-        if(pid != pid_) nb_nocomms_++;
+        if(pid != pid_) nb_nocomms_++; // In case there is no connection between pid and pid_
       } else {
         tag = tags_[same_dst[0]]; // Use the tag of first element
       }
@@ -193,15 +523,27 @@ public:
                                               ivy-ivy_min,
                                               nx, ny, nvx, nvy);
 
-                // h_map is used for receive buffer
-                map_(idx_flatten, 0) = ix;
-                map_(idx_flatten, 1) = iy;
-                map_(idx_flatten, 2) = ivx;
-                map_(idx_flatten, 3) = ivy;
+                // Map is different for send/recv buffers
+                if(name == "send") {
+                  const int ix_bc  = (nx_max  + ix)  % nx_max;
+                  const int iy_bc  = (ny_max  + iy)  % ny_max;
+                  const int ivx_bc = (nvx_max + ivx) % nvx_max;
+                  const int ivy_bc = (nvy_max + ivy) % nvy_max;
+                  map_(idx_flatten, 0) = ix_bc;
+                  map_(idx_flatten, 1) = iy_bc;
+                  map_(idx_flatten, 2) = ivx_bc;
+                  map_(idx_flatten, 3) = ivy_bc;
+                } else {
+                  map_(idx_flatten, 0) = ix;
+                  map_(idx_flatten, 1) = iy;
+                  map_(idx_flatten, 2) = ivx;
+                  map_(idx_flatten, 3) = ivy;
+                }
                                                                                                  
                 // h_flatten_map is used for send buffer
                 flatten_map_(idx_flatten, 0) = idx;
                 flatten_map_(idx_flatten, 1) = it;
+                map_2D2flatten(idx, it) = idx_flatten;
                 idx_flatten++;
               }
             }
@@ -223,6 +565,7 @@ public:
     nb_halos_ = list.size();
     pids_.resize(nb_halos_);
     tags_.resize(nb_halos_);
+    total_size_orc_.resize(DIMENSION);
 
     xmin_      = RangeView2D("halo_xmin",  nb_halos_, DIMENSION);
     xmax_      = RangeView2D("halo_xmax",  nb_halos_, DIMENSION);
@@ -270,11 +613,13 @@ public:
     nhalo_max_[2] = *std::max_element(nvx_halos.begin(), nvx_halos.end());
     nhalo_max_[3] = *std::max_element(nvy_halos.begin(), nvy_halos.end());
     
+    IntView2D map_2D2flatten(name + "_map_2D2flatten", size_, nb_halos_);
+    mergeLists(conf, name, map_2D2flatten);
     if(name == "send") {
       // 2D Buffer is used only for send buffer [TO DO] delete this
       buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
+      listBoundary(conf, name, map_2D2flatten);
     }
-    mergeLists(conf, name);
   }
 };
 
@@ -367,12 +712,9 @@ private:
   void getNeighbours(const Config *conf, const RealView4D &halo_fn, int xrange[8],
                      std::vector<Halo> &hlist, int lxmin[4], int lxmax[4], int count);
 
-  void fillHalo(const Config *conf, RealView4D halo_fn);
-  void fillHaloBoundaryCond(const Config *conf, RealView4D halo_fn);
-  void fillHaloBoundaryCondOrig(const Config *conf, RealView4D halo_fn);
-
   void packAndBoundary(Config *conf, RealView4D &halo_fn, Halos *send_buffers);
 
+  // [TO DO] Delete this
   void pack(Config *conf, RealView4D &halo_fn, Halos *send_buffers) {
     const Domain *dom = &(conf->dom_);
     const int nx_max  = dom->nxmax_[0];
@@ -426,7 +768,7 @@ private:
     }
   }
 
-  // Called after applying boundary condition
+  // [TO DO] Delete this Called after applying boundary condition
   void merged_pack(Halos *send_buffers) {
     const int total_size = send_buffers->total_size_;
     #if defined( ENABLE_OPENACC )
@@ -438,6 +780,21 @@ private:
       int idx_src = send_buffers->flatten_map_(idx, 0);
       int ib      = send_buffers->flatten_map_(idx, 1);
       send_buffers->buf_flatten_(idx) = send_buffers->buf_(idx_src, ib);
+    }
+  }
+
+  // The version to survive
+  void pack_(RealView4D &halo_fn, Halos *send_buffers) {
+    const int total_size = send_buffers->total_size_;
+    #if defined( ENABLE_OPENACC )
+      #pragma acc parallel loop present(this, halo_fn, send_buffers->map_, send_buffers->buf_flatten_)
+    #else
+      #pragma omp parallel for
+    #endif
+    for(int idx=0; idx<total_size; idx++) {
+      const int ix  = send_buffers->map_(idx, 0), iy  = send_buffers->map_(idx, 1);
+      const int ivx = send_buffers->map_(idx, 2), ivy = send_buffers->map_(idx, 3);
+      send_buffers->buf_flatten_(idx) = halo_fn(ix, iy, ivx, ivy);
     }
   }
 
@@ -469,7 +826,7 @@ private:
     }
   }
 
-  // Boundary condition OpenMP specialization (loop over each halo)
+  // [TO DO] Delete this Boundary condition OpenMP specialization (loop over each halo)
   void boundary_condition(Config *conf, RealView4D &halo_fn, Halos *send_halos) {
     const Domain *dom = &(conf->dom_);
     int nx = dom->nxmax_[0], ny = dom->nxmax_[1], nvx = dom->nxmax_[2], nvy = dom->nxmax_[3];
@@ -733,273 +1090,159 @@ private:
     } // for(int ib = 0; ib < nb; ib++)
   }
 
-  /* Kokkos like implementation, for some reason, not working appropriately
-  void boundary_condition_acc_(Config *conf, RealView4D &halo_fn, Halos *send_halos) {
-    const Domain *dom = &(conf->dom_);
-    int nx = dom->nxmax_[0], ny = dom->nxmax_[1], nvx = dom->nxmax_[2], nvy = dom->nxmax_[3];
-    int bc_sign[8];
-    for(int k = 0; k < DIMENSION; k++) {
-      bc_sign[2 * k + 0] = -1;
-      bc_sign[2 * k + 1] = 1;
-    }
+  // Version to survive
+  void boundary_condition_(RealView4D &halo_fn, Halos *send_buffers) {
     float64 alpha = sqrt(3) - 2;
-    const int nb_send_halos = send_halos->nb_halos();
-    const int nx_send  = send_halos->nhalo_max_[0];
-    const int ny_send  = send_halos->nhalo_max_[1];
-    const int nvx_send = send_halos->nhalo_max_[2];
+    int orcsum = 0;
+    const int total_size0 = send_buffers->total_size_orc_.at(orcsum);
+    if(total_size0 > 0) {
+      #if defined( ENABLE_OPENACC )
+        #pragma acc parallel loop present(this, halo_fn, send_buffers->map_bc_, send_buffers->buf_flatten_, \
+                                          send_buffers->map_orc_, send_buffers->sign1_, send_buffers->sign2_, \
+                                          send_buffers->sign3_, send_buffers->sign4_)
+      #else
+        #pragma omp parallel for
+      #endif
+      for(int idx=0; idx<total_size0; idx++) {
+        const int rx  = send_buffers->map_bc_(idx, orcsum, 0), ry  = send_buffers->map_bc_(idx, orcsum, 1);
+        const int rvx = send_buffers->map_bc_(idx, orcsum, 2), rvy = send_buffers->map_bc_(idx, orcsum, 3);
+        const int idx_dst = send_buffers->map_orc_(idx, orcsum);
+        const int sign10 = send_buffers->sign1_(idx, orcsum, 0);
+        const int sign11 = send_buffers->sign1_(idx, orcsum, 1);
+        const int sign12 = send_buffers->sign1_(idx, orcsum, 2);
+        const int sign13 = send_buffers->sign1_(idx, orcsum, 3);
+        float64 fsum = 0.;
+        float64 alphap1 = alpha;
+        for(int j1 = 1; j1 <= MMAX; j1++) {
+          fsum += halo_fn(rx  + sign10 * j1,
+                          ry  + sign11 * j1,
+                          rvx + sign12 * j1,
+                          rvy + sign13 * j1
+                         ) * alphap1;
+          alphap1 *= alpha;
+        }
+        send_buffers->buf_flatten_(idx_dst) = fsum;
+      }
+    }
 
-    std::cout << "nx_send, ny_send, nvx_send, nb_send_halos = "
-              << nx_send << ", " << ny_send << ", " << nvx_send << ", " << nb_send_halos << std::endl;
+    orcsum = 1;
+    const int total_size1 = send_buffers->total_size_orc_.at(orcsum);
+    if(total_size1 > 0) {
+      #if defined( ENABLE_OPENACC )
+        #pragma acc parallel loop present(this, halo_fn, send_buffers->map_bc_, send_buffers->buf_flatten_, \
+                                          send_buffers->map_orc_, send_buffers->sign1_, send_buffers->sign2_, \
+                                          send_buffers->sign3_, send_buffers->sign4_)
+      #else
+        #pragma omp parallel for
+      #endif
+      for(int idx=0; idx<total_size1; idx++) {
+        const int idx_dst = send_buffers->map_orc_(idx, orcsum);
+        const int rx  = send_buffers->map_bc_(idx, orcsum, 0), ry  = send_buffers->map_bc_(idx, orcsum, 1);
+        const int rvx = send_buffers->map_bc_(idx, orcsum, 2), rvy = send_buffers->map_bc_(idx, orcsum, 3);
+        const int sign10 = send_buffers->sign1_(idx, orcsum, 0), sign20 = send_buffers->sign2_(idx, orcsum, 0);
+        const int sign11 = send_buffers->sign1_(idx, orcsum, 1), sign21 = send_buffers->sign2_(idx, orcsum, 1);
+        const int sign12 = send_buffers->sign1_(idx, orcsum, 2), sign22 = send_buffers->sign2_(idx, orcsum, 2);
+        const int sign13 = send_buffers->sign1_(idx, orcsum, 3), sign23 = send_buffers->sign2_(idx, orcsum, 3);
+        float64 fsum = 0.;
+        float64 alphap2 = alpha;
+        for(int j2 = 1; j2 <= MMAX; j2++) {
+          float64 alphap1 = alpha * alphap2;
+          for(int j1 = 1; j1 <= MMAX; j1++) {
+            fsum += halo_fn(rx  + sign10 * j1 + sign20 * j2,
+                            ry  + sign11 * j1 + sign21 * j2,
+                            rvx + sign12 * j1 + sign22 * j2,
+                            rvy + sign13 * j1 + sign23 * j2) * alphap1;
+            alphap1 *= alpha;
+          }
+          alphap2 *= alpha;
+        }
+        send_buffers->buf_flatten_(idx_dst) = fsum;
+      }
+    }
 
-    #pragma acc parallel loop collapse(4) present(this,send_halos->xmin_, send_halos->xmax_, \
-                                                  send_halos->bc_in_min_, send_halos->bc_in_max_, \
-                                                  halo_fn, send_halos->buf_)
-    for(int ib = 0; ib < nb_send_halos; ib++) {
-      for(int ivx = 0; ivx < nvx_send; ivx++) {
-        for(int iy = 0; iy < ny_send; iy++) {
-          for(int ix = 0; ix < nx_send; ix++) {
-            int halo_min[4], halo_max[4];
-            for(int k = 0; k < DIMENSION; k++) {
-              halo_min[k] = send_halos->xmin_(ib, k);
-              halo_max[k] = send_halos->xmax_(ib, k);
+    orcsum = 2;
+    const int total_size2 = send_buffers->total_size_orc_.at(orcsum);
+    if(total_size2 > 0) {
+      #if defined( ENABLE_OPENACC )
+        #pragma acc parallel loop present(this, halo_fn, send_buffers->map_bc_, send_buffers->buf_flatten_, \
+                                          send_buffers->map_orc_, send_buffers->sign1_, send_buffers->sign2_, \
+                                          send_buffers->sign3_, send_buffers->sign4_)
+      #else
+        #pragma omp parallel for
+      #endif
+      for(int idx=0; idx<total_size2; idx++) {
+        const int idx_dst = send_buffers->map_orc_(idx, orcsum);
+        const int rx  = send_buffers->map_bc_(idx, orcsum, 0), ry  = send_buffers->map_bc_(idx, orcsum, 1);
+        const int rvx = send_buffers->map_bc_(idx, orcsum, 2), rvy = send_buffers->map_bc_(idx, orcsum, 3);
+        const int sign10 = send_buffers->sign1_(idx, orcsum, 0), sign20 = send_buffers->sign2_(idx, orcsum, 0), sign30 = send_buffers->sign3_(idx, orcsum, 0);
+        const int sign11 = send_buffers->sign1_(idx, orcsum, 1), sign21 = send_buffers->sign2_(idx, orcsum, 1), sign31 = send_buffers->sign3_(idx, orcsum, 1);
+        const int sign12 = send_buffers->sign1_(idx, orcsum, 2), sign22 = send_buffers->sign2_(idx, orcsum, 2), sign32 = send_buffers->sign3_(idx, orcsum, 2);
+        const int sign13 = send_buffers->sign1_(idx, orcsum, 3), sign23 = send_buffers->sign2_(idx, orcsum, 3), sign33 = send_buffers->sign3_(idx, orcsum, 3);
+        float64 fsum = 0.;
+        float64 alphap3 = alpha;
+        for(int j3 = 1; j3 <= MMAX; j3++) {
+          float64 alphap2 = alpha * alphap3;
+          for(int j2 = 1; j2 <= MMAX; j2++) {
+            float64 alphap1 = alpha * alphap2;
+            for(int j1 = 1; j1 <= MMAX; j1++) {
+              fsum += halo_fn(rx  + sign10 * j1 + sign20 * j2 + sign30 * j3,
+                              ry  + sign11 * j1 + sign21 * j2 + sign31 * j3,
+                              rvx + sign12 * j1 + sign22 * j2 + sign32 * j3,
+                              rvy + sign13 * j1 + sign23 * j2 + sign33 * j3) * alphap1;
+              alphap1 *= alpha;
             }
-            const int halo_nx  = halo_max[0] - halo_min[0] + 1;
-            const int halo_ny  = halo_max[1] - halo_min[1] + 1;
-            const int halo_nvx = halo_max[2] - halo_min[2] + 1;
-            const int halo_nvy = halo_max[3] - halo_min[3] + 1;
+            alphap2 *= alpha;
+          }
+          alphap3 *= alpha;
+        }
+        send_buffers->buf_flatten_(idx_dst) = fsum;
+      }
+    }
 
-            int bc_in[8], orcheck[4];
-            int orcsum = 0;
-            char bitconf = 0;
-            for(int k = 0; k < 4; k++) {
-              bc_in[2 * k + 0] = send_halos->bc_in_min_(ib, k);
-              bc_in[2 * k + 1] = send_halos->bc_in_max_(ib, k);
-              orcheck[k] = (bc_in[2 * k] != VUNDEF) || (bc_in[2 * k + 1] != VUNDEF);
-              orcsum += orcheck[k];
-              bitconf |= 1 << k;
+    orcsum = 3;
+    const int total_size3 = send_buffers->total_size_orc_.at(orcsum);
+    if(total_size3 > 0) {
+      #if defined( ENABLE_OPENACC )
+        #pragma acc parallel loop present(this, halo_fn, send_buffers->map_bc_, send_buffers->buf_flatten_, \
+                                          send_buffers->map_orc_, send_buffers->sign1_, send_buffers->sign2_, \
+                                          send_buffers->sign3_, send_buffers->sign4_)
+      #else
+        #pragma omp parallel for
+      #endif
+      for(int idx=0; idx<total_size3; idx++) {
+        const int idx_dst = send_buffers->map_orc_(idx, orcsum);
+        const int rx  = send_buffers->map_bc_(idx, orcsum, 0), ry  = send_buffers->map_bc_(idx, orcsum, 1);
+        const int rvx = send_buffers->map_bc_(idx, orcsum, 2), rvy = send_buffers->map_bc_(idx, orcsum, 3);
+        float64 fsum = 0.;
+        float64 alphap4 = alpha;
+        const int sign10 = send_buffers->sign1_(idx, orcsum, 0);
+        const int sign21 = send_buffers->sign2_(idx, orcsum, 1);
+        const int sign32 = send_buffers->sign3_(idx, orcsum, 2);
+        const int sign43 = send_buffers->sign4_(idx, orcsum, 3);
+        for(int j4 = 1; j4 <= MMAX; j4++) {
+          float64 alphap3 = alpha * alphap4;
+          for(int j3 = 1; j3 <= MMAX; j3++) {
+            float64 alphap2 = alpha * alphap3;
+            for(int j2 = 1; j2 <= MMAX; j2++) {
+              float64 alphap1 = alpha * alphap2;
+              for(int j1 = 1; j1 <= MMAX; j1++) {
+                fsum += halo_fn(rx  + sign10 * j1,
+                                ry  + sign21 * j2,
+                                rvx + sign32 * j3,
+                                rvy + sign43 * j4) * alphap1;
+                alphap1 *= alpha;
+              }
+              alphap2 *= alpha;
             }
-
-            int sign1[4], sign2[4], sign3[4], sign4[4];
-            for(int k1 = 0; k1 < 8; k1++) {
-              if(bc_in[k1] != VUNDEF) {
-                int vdx[4], vex[4];
-                for(int ii = 0; ii < 4; ii++) {
-                  sign1[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
-                  if(ii == k1/2) {
-                    sign1[ii] = bc_sign[k1], vdx[ii] = bc_in[k1], vex[ii] = bc_in[k1];
-                  }
-                }
-
-                const int jx  = ix  + vdx[0];
-                const int jy  = iy  + vdx[1];
-                const int jvx = ivx + vdx[2];
-                if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] ) {
-                  for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
-                    int rx  = (nx  + jx  - sign1[0]) % nx;
-                    int ry  = (ny  + jy  - sign1[1]) % ny;
-                    int rvx = (nvx + jvx - sign1[2]) % nvx;
-                    int rvy = (nvy + jvy - sign1[3]) % nvy;
-                    float64 fsum = 0.;
-                    float64 alphap1 = alpha;
-                    for(int j1 = 1; j1 <= MMAX; j1++) {
-                      fsum += halo_fn(rx  + sign1[0] * j1,
-                                      ry  + sign1[1] * j1,
-                                      rvx + sign1[2] * j1,
-                                      rvy + sign1[3] * j1) * alphap1;
-                      alphap1 *= alpha;
-                    }
-                    int idx = Index::coord_4D2int(jx  - halo_min[0], 
-                                                  jy  - halo_min[1],
-                                                  jvx - halo_min[2], 
-                                                  jvy - halo_min[3], 
-                                                  halo_nx, halo_ny, halo_nvx, halo_nvy);
-
-                    send_halos->buf_(idx, ib) = fsum;
-                  } // for(int ivy = 0; ivy < tmp_nvy; ivy++)
-                } // if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] )
-              } // if(bc_in[k1] != VUNDEF)
-            } // for(int k1 = 0; k1 < 8; k1++)
-
-            if(orcsum > 1) {
-              for(int k1 = 0; k1 < 8; k1++) {
-                for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++) {
-                  if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF) {
-                    int vdx[4], vex[4], sign1[4], sign2[4];
-                    for(int ii = 0; ii < 4; ii++) {
-                      sign1[ii] = 0, sign2[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
-
-                      if(ii == k1/2)
-                        sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
-                      if(ii == k2/2)
-                        sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
-                    }
-
-                    const int jx  = ix  + vdx[0];
-                    const int jy  = iy  + vdx[1];
-                    const int jvx = ivx + vdx[2];
-                    if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] ) {
-                      int rx  = (nx  + jx  - sign1[0] - sign2[0]) % nx;
-                      int ry  = (ny  + jy  - sign1[1] - sign2[1]) % ny;
-                      int rvx = (nvx + jvx - sign1[2] - sign2[2]) % nvx;
-                      for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
-                        int rvy = (nvy + jvy - sign1[3] - sign2[3]) % nvy;
-                        float64 fsum = 0.;
-                        float64 alphap2 = alpha;
-                        for(int j2 = 1; j2 <= MMAX; j2++) {
-                          float64 alphap1 = alpha * alphap2;  
-                          for(int j1 = 1; j1 <= MMAX; j1++) {
-                            fsum += halo_fn(rx  + sign1[0] * j1 + sign2[0] * j2,
-                                            ry  + sign1[1] * j1 + sign2[1] * j2,
-                                            rvx + sign1[2] * j1 + sign2[2] * j2,
-                                            rvy + sign1[3] * j1 + sign2[3] * j2) * alphap1;
-                            alphap1 *= alpha;
-                          }
-                          alphap2 *= alpha;
-                        }
-                        int idx = Index::coord_4D2int(jx  - halo_min[0], 
-                                                      jy  - halo_min[1],
-                                                      jvx - halo_min[2],
-                                                      jvy - halo_min[3],
-                                                      halo_nx, halo_ny, halo_nvx, halo_nvy);
-                        send_halos->buf_(idx, ib) = fsum;
-                      } // for(int jvy = vdx[3]; jvy <= vex[3]; jvy++)
-                    } // if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] )
-                  } // if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF)
-                } // for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++)
-              } // for(int k1 = 0; k1 < 8; k1++)
-            } // if(orcsum > 1)
-
-            if(orcsum > 2) {
-              for(int k1 = 0; k1 < 8; k1++) {
-                for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++) {
-                  for(int k3 = 2 * (1 + k2/2); k3 < 8; k3++) {
-                    if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF && bc_in[k3] != VUNDEF) {
-                      int vdx[4], vex[4];
-                      for(int ii = 0; ii < 4; ii++) {
-                        sign1[ii] = 0, sign2[ii] = 0, sign3[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
-
-                        if(ii == k1/2)
-                          sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
-                                                                                                                                  
-                        if(ii == k2/2)
-                          sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
-                                                                                                                                                  
-                        if(ii == k3/2)
-                          sign3[ii] = bc_sign[k3], vex[ii] = vdx[ii] = bc_in[k3];
-                      }
-
-                      const int jx  = ix  + vdx[0];
-                      const int jy  = iy  + vdx[1];
-                      const int jvx = ivx + vdx[2];
-                      if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] ) {
-                        int rx  = (nx  + jx  - sign1[0] - sign2[0] - sign3[0]) % nx;
-                        int ry  = (ny  + jy  - sign1[1] - sign2[1] - sign3[1]) % ny;
-                        int rvx = (nvx + jvx - sign1[2] - sign2[2] - sign3[2]) % nvx;
-                        for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
-                          int rvy = (nvy + jvy - sign1[3] - sign2[3] - sign3[3]) % nvy;
-                          float64 fsum = 0.;
-                          float64 alphap3 = alpha;
-                          for(int j3 = 1; j3 <= MMAX; j3++) {
-                            float64 alphap2 = alpha * alphap3;
-                            for(int j2 = 1; j2 <= MMAX; j2++) {
-                              float64 alphap1 = alpha * alphap2;
-                              for(int j1 = 1; j1 <= MMAX; j1++) {
-                                fsum += halo_fn(rx  + sign1[0] * j1 + sign2[0] * j2 + sign3[0] * j3,
-                                                ry  + sign1[1] * j1 + sign2[1] * j2 + sign3[1] * j3,
-                                                rvx + sign1[2] * j1 + sign2[2] * j2 + sign3[2] * j3,
-                                                rvy + sign1[3] * j1 + sign2[3] * j2 + sign3[3] * j3) * alphap1;
-                                alphap1 *= alpha;
-                              }
-                              alphap2 *= alpha;
-                            }
-                            alphap3 *= alpha;
-                          }
-                          int idx = Index::coord_4D2int(jx  - halo_min[0], 
-                                                        jy  - halo_min[1],
-                                                        jvx - halo_min[2],
-                                                        jvy - halo_min[3],
-                                                        halo_nx, halo_ny, halo_nvx, halo_nvy);
-                          send_halos->buf_(idx, ib) = fsum;
-                        } // for(int ivy = 0; ivy < tmp_nvy; ivy++)
-                      } // if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] )
-                    } // if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF)
-                  } // for(int k3 = 2 * (1 + k2/2); k3 < 8; k3++)
-                } // for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++)
-              } // for(int k1 = 0; k1 < 8; k1++)
-            } // if(orcsum > 2)
-
-            if(orcsum > 3) {
-              for(int k1 = 0; k1 < 2; k1++) {
-                for(int k2 = 2; k2 < 4; k2++) {
-                  for(int k3 = 4; k3 < 6; k3++) {
-                    for(int k4 = 6; k4 < 8; k4++) {
-                      if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF && bc_in[k3] != VUNDEF && bc_in[k4] != VUNDEF) {
-                        int vdx[4], vex[4];
-                        for(int ii = 0; ii < 4; ii++) {
-                          sign1[ii] = 0, sign2[ii] = 0, sign3[ii] = 0, sign4[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
-
-                          if(ii == k1/2)
-                            sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
-                          if(ii == k2/2)
-                            sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
-                          if(ii == k3/2)
-                            sign3[ii] = bc_sign[k3], vex[ii] = vdx[ii] = bc_in[k3];
-                          if(ii == k4/2)
-                            sign4[ii] = bc_sign[k4], vex[ii] = vdx[ii] = bc_in[k4];
-                        }
-
-                        const int jx  = ix  + vdx[0];
-                        const int jy  = iy  + vdx[1];
-                        const int jvx = ivx + vdx[2];
-                        if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] ) {
-                          int rx  = (nx  + jx  - sign1[0]) % nx;
-                          int ry  = (ny  + jy  - sign2[1]) % ny;
-                          int rvx = (nvx + jvx - sign3[2]) % nvx;
-                          for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
-                            int rvy = (nvy + jvy - sign4[3]) % nvy;
-                            float64 fsum = 0.;
-                            float64 alphap4 = alpha;
-                            for(int j4 = 1; j4 <= MMAX; j4++) {
-                              float64 alphap3 = alpha * alphap4;
-                              for(int j3 = 1; j3 <= MMAX; j3++) {
-                                float64 alphap2 = alpha * alphap3;
-                                for(int j2 = 1; j2 <= MMAX; j2++) {
-                                  float64 alphap1 = alpha * alphap2;
-                                  for(int j1 = 1; j1 <= MMAX; j1++) {
-                                    fsum += halo_fn(rx  + sign1[0] * j1,
-                                                    ry  + sign2[1] * j2,
-                                                    rvx + sign3[2] * j3,
-                                                    rvy + sign4[3] * j4) * alphap1;
-                                    alphap1 *= alpha;
-                                  }
-                                  alphap2 *= alpha;
-                                }
-                                alphap3 *= alpha;
-                              }
-                              alphap4 *= alpha;
-                            }
-                            int idx = Index::coord_4D2int(jx  - halo_min[0], 
-                                                          jy  - halo_min[1],
-                                                          jvx - halo_min[2],
-                                                          jvy - halo_min[3],
-                                                          halo_nx, halo_ny, halo_nvx, halo_nvy);
-                                                
-                            send_halos->buf_(idx, ib) = fsum;
-                          } // for(int ivy = 0; ivy < tmp_nvy; ivy++)
-                        } // if( jx <= vex[0] && jy <= vex[1] && jvx <= vex[2] )
-                      } // if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF)
-                    } // for(int k4 = 6; k4 < 8; k4++)
-                  } // for(int k3 = 4; k3 < 6; k3++)
-                } // for(int k2 = 2; k2 < 4; k2++)
-              } // for(int k1 = 0; k1 < 8; k1++)
-            } // if(orcsum > 3)
-          } // for(int ix = 0; ix < nx_send; ix++)
-        } // for(int iy = 0; iy < ny_send; iy++)
-      } // for(int ivx = 0; ivx < nvx_send; ivx++)
-    } // for(int ib = 0; ib < nb_send_halos; ib++)
+            alphap3 *= alpha;
+          }
+          alphap4 *= alpha;
+        }
+        send_buffers->buf_flatten_(idx_dst) = fsum;
+      } //for(int idx=0; idx<total_size3; idx++)
+    }
   }
-  */
-            
+
   int mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std::vector<Halo>::iterator &g);
   
   // Wrapper for MPI communication
