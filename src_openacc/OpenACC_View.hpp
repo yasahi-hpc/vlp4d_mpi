@@ -197,7 +197,6 @@ public:
       if(!is_copied_) {
         #if defined( ENABLE_OPENACC )
           #pragma acc exit data delete(data_[0:size_], strides_[0:dims_]) // detach data
-          #pragma acc exit data delete(this) // delete this pointer
         #endif
         if(data_    != nullptr) delete [] data_;
         if(strides_ != nullptr) delete [] strides_;
@@ -205,6 +204,9 @@ public:
         data_     = nullptr;
         strides_  = nullptr;
       }
+      #if defined( ENABLE_OPENACC )
+        #pragma acc exit data delete(this) // delete this pointer
+      #endif
     }
   }
 
