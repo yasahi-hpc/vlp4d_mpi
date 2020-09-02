@@ -527,21 +527,14 @@ void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
   @param[in] send_list
   @param[in] recv_list
   @param[inout] halo_fn
-     Indentical to fn?
  */
 void Distrib::packAndBoundary(Config *conf, RealView4D &halo_fn, Halos *send_buffers) {
   if(spline_) {
-    const int nx_send  = send_buffers->nhalo_max_[0];
-    const int ny_send  = send_buffers->nhalo_max_[1];
-    const int nvx_send = send_buffers->nhalo_max_[2];
-    const int nvy_send = send_buffers->nhalo_max_[3];
-    //L2norm(send_buffers->buf_flatten_, pid_);
-    pack(conf, halo_fn, send_buffers);
-    //L2norm(send_buffers->buf_, pid_);
-    boundary_condition(conf, halo_fn, send_buffers_);
-    //L2norm(send_buffers->buf_, pid_);
-    merged_pack(send_buffers);
-    //L2norm(send_buffers->buf_flatten_, pid_);
+    //pack(conf, halo_fn, send_buffers);
+    //boundary_condition(conf, halo_fn, send_buffers_);
+    //merged_pack(send_buffers);
+    pack_(halo_fn, send_buffers);
+    boundary_condition_(halo_fn, send_buffers);
   }
 }
 
