@@ -357,9 +357,9 @@ void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, R
   comm.exchangeHalo(conf, fn, timers);
   testcase_ptest_check(conf, comm, fn);
 
-  timers[Halo_fill_A]->reset();
-  timers[Halo_comm]->reset();
-  timers[Halo_fill_B]->reset();
+  timers[TimerEnum::packing]->reset();
+  timers[TimerEnum::comm]->reset();
+  timers[TimerEnum::unpacking]->reset();
 
   *ef = new Efield(conf, {dom->nxmax_[0], dom->nxmax_[1]});
 

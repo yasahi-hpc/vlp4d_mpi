@@ -5,14 +5,14 @@
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Complex.hpp>
 
-template <typename RealType> using Complex = std::complex<RealType>;
+template <typename RealType> using Complex = Kokkos::complex<RealType>;
 
 namespace Impl {
   template <typename RealType, class ArrayLayout = Kokkos::LayoutLeft,
-            typename std::enable_if<std::is_same<ScalarType, float           >::value ||
-                                    std::is_same<ScalarType, double          >::value ||
-                                    std::is_same<ScalarType, Complex<float>  >::value ||
-                                    std::is_same<ScalarType, Complex<double> >::value
+            typename std::enable_if<std::is_same<RealType, float           >::value ||
+                                    std::is_same<RealType, double          >::value ||
+                                    std::is_same<RealType, Complex<float>  >::value ||
+                                    std::is_same<RealType, Complex<double> >::value
                                    >::type * = nullptr>
   struct Transpose {
     private:

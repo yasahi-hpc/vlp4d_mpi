@@ -59,18 +59,15 @@ int main (int argc, char* argv[]) {
     int iter = 0;
 
     Kokkos::fence();
-    Kokkos::Timer timer;
     timers[Total]->begin();
 
-    timers[Field]->begin();
     field_rho(&conf, comm, fn, ef);
     field_reduce(&conf, ef);
     field_poisson(&conf, ef, dg, iter);
     dg->computeL2norm(&conf, fn, iter);
-    Kokkos::fence();
-    timers[Field]->end();
 
     while(iter <conf.dom_.nbiter_) {
+      timers[MainLoop]->begin();
       if(comm.master()) {
         printf("iter %d\n", iter);
       }
@@ -78,11 +75,10 @@ int main (int argc, char* argv[]) {
       iter++;
       onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);
       Impl::swap(fn, fnp1);
+      timers[MainLoop]->end();
     }
     Kokkos::fence();
     timers[Total]->end();
-    double seconds = timer.seconds();
-    if(comm.master()) printf("total time: %f s\n", seconds);
     finalize(&ef, &dg);
     comm.cleanup();
   }

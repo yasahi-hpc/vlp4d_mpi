@@ -527,25 +527,23 @@ void Distrib::exchangeHalo(Config *conf, RealOffsetView4D halo_fn, std::vector<T
   stat.resize(nbreq);
 
   // CUDA Aware MPI
-  timers[Halo_fill_A]->begin();
+  timers[TimerEnum::packing]->begin();
   Irecv(creq, req);
-
   packAndBoundary(conf, halo_fn);
   Kokkos::fence();
-  timers[Halo_fill_A]->end();
-  timers[Halo_comm]->begin();
+  timers[TimerEnum::packing]->end();
 
+  timers[TimerEnum::comm]->begin();
   Isend(creq, req); // local copy done inside
   Waitall(creq, req, stat);
 
   // clear vectors
   std::vector<MPI_Request>().swap(req);
   std::vector<MPI_Status>().swap(stat);
-  timers[Halo_comm]->end();
-  timers[Halo_fill_B]->begin();
+  timers[TimerEnum::comm]->end();
 
   // copy halo regions back into distribution function
+  timers[TimerEnum::unpacking]->begin();
   unpack(halo_fn);
-  Kokkos::fence();
-  timers[Halo_fill_B]->end();
+  timers[TimerEnum::unpacking]->end();
 }
