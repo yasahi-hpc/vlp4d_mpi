@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cassert>
 #include "types.h"
-#include "config.h"
+#include "Config.hpp"
 #include "Index.hpp"
 #include "utils.hpp"
 #include "Timer.hpp"

@@ -2,7 +2,7 @@
 #define __EFIELD_HPP__
 
 #include "types.h"
-#include "config.h"
+#include "Config.hpp"
 #include "FFT.hpp"
 
 struct Efield {

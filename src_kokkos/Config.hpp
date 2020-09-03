@@ -1,5 +1,5 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef __CONFIG_HPP__
+#define __CONFIG_HPP__
 
 #include "types.h"
 

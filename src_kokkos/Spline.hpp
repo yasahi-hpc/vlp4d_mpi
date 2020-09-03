@@ -1,7 +1,7 @@
 #ifndef __SPLINE_HPP__
 #define __SPLINE_HPP__
 
-#include "config.h"
+#include "Config.hpp"
 #include "types.h"
 #include "communication.hpp"
 #include "tiles.h"

@@ -1,6 +1,4 @@
-#include "diags.hpp"
-//#include "index.h"
-//#include "helper.hpp"
+#include "Diags.hpp"
 #include "tiles.h"
 #include <Kokkos_ScatterView.hpp>
 #include <mpi.h>

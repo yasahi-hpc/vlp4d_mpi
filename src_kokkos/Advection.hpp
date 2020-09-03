@@ -1,9 +1,9 @@
 #ifndef __ADVECTION_HPP__
 #define __ADVECTION_HPP__
 
-#include "config.h"
+#include "Config.hpp"
 #include "types.h"
-#include "efield.hpp"
+#include "Efield.hpp"
 #include "Math.hpp"
 #include "tiles.h"
 #include <cmath>

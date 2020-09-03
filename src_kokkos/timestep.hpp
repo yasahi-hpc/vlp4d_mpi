@@ -1,8 +1,8 @@
 #ifndef __TIMESTEP_HPP__
 #define __TIMESTEP_HPP__
 
-#include "efield.hpp"
-#include "diags.hpp"
+#include "Efield.hpp"
+#include "Diags.hpp"
 #include "types.h"
 #include "Math.hpp"
 #include "communication.hpp"

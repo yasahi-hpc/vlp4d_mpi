@@ -1,4 +1,4 @@
-#include "efield.hpp"
+#include "Efield.hpp"
 
 // field init
 Efield::Efield(Config *conf, shape_t<2> dim)

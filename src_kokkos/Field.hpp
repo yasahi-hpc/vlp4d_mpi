@@ -1,9 +1,9 @@
 #ifndef __FIELD_HPP__
 #define __FIELD_HPP__
 
-#include "config.h"
-#include "efield.hpp"
-#include "diags.hpp"
+#include "Config.hpp"
+#include "Efield.hpp"
+#include "Diags.hpp"
 #include "types.h"
 #include "communication.hpp"
 
