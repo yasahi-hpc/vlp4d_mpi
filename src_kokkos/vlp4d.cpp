@@ -23,7 +23,7 @@
 #include "types.h"
 #include "config.h"
 #include "init.h"
-#include "parser.hpp"
+#include "Parser.hpp"
 #include "communication.hpp"
 #include "efield.hpp"
 #include "diags.hpp"
@@ -34,8 +34,7 @@
 #include "Timer.hpp"
 
 int main (int argc, char* argv[]) {
-  Parser parser;
-  parser.setArgs(argc, argv);
+  Parser parser(argc, argv);
   Distrib comm(argc, argv);
 
   std::vector<Timer*> timers;
