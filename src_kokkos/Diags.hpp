@@ -1,7 +1,7 @@
 #ifndef __DIAGS_HPP__
 #define __DIAGS_HPP__
 
-#include "types.h"
+#include "Types.hpp"
 #include "Config.hpp"
 #include "Efield.hpp"
 #include "communication.hpp"

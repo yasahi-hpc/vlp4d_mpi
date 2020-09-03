@@ -3,7 +3,7 @@
 
 #include "Efield.hpp"
 #include "Diags.hpp"
-#include "types.h"
+#include "Types.hpp"
 #include "Config.hpp"
 #include "communication.hpp"
 

@@ -4,7 +4,7 @@
 #include "Config.hpp"
 #include "Efield.hpp"
 #include "Diags.hpp"
-#include "types.h"
+#include "Types.hpp"
 #include "communication.hpp"
 
 void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef);

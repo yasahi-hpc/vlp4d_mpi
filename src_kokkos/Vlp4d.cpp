@@ -19,8 +19,7 @@
 #include <Kokkos_Core.hpp>
 #include <impl/Kokkos_Timer.hpp>
 #include <cstdio>
-//#include "helper.hpp"
-#include "types.h"
+#include "Types.hpp"
 #include "Config.hpp"
 #include "Init.hpp"
 #include "Parser.hpp"
@@ -29,8 +28,7 @@
 #include "Diags.hpp"
 #include "Field.hpp"
 #include "Math.hpp"
-//#include "spline.hpp"
-#include "timestep.hpp"
+#include "Timestep.hpp"
 #include "Timer.hpp"
 
 int main (int argc, char* argv[]) {

@@ -1,7 +1,7 @@
 #ifndef __EFIELD_HPP__
 #define __EFIELD_HPP__
 
-#include "types.h"
+#include "Types.hpp"
 #include "Config.hpp"
 #include "FFT.hpp"
 

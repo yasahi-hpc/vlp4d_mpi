@@ -2,7 +2,7 @@
 #define __SPLINE_HPP__
 
 #include "Config.hpp"
-#include "types.h"
+#include "Types.hpp"
 #include "communication.hpp"
 #include "tiles.h"
 #include "Transpose.hpp"

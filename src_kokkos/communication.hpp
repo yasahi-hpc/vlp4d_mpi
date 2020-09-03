@@ -5,7 +5,7 @@
 #include <mpi.h>
 #include <algorithm>
 #include <cassert>
-#include "types.h"
+#include "Types.hpp"
 #include "Config.hpp"
 #include "Index.hpp"
 #include "utils.hpp"

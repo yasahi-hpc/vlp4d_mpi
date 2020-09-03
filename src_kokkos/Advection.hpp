@@ -2,7 +2,7 @@
 #define __ADVECTION_HPP__
 
 #include "Config.hpp"
-#include "types.h"
+#include "Types.hpp"
 #include "Efield.hpp"
 #include "Math.hpp"
 #include "tiles.h"

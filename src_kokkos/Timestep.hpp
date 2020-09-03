@@ -3,13 +3,12 @@
 
 #include "Efield.hpp"
 #include "Diags.hpp"
-#include "types.h"
+#include "Types.hpp"
 #include "Math.hpp"
 #include "communication.hpp"
 #include "Advection.hpp"
 #include "Timer.hpp"
 #include "Spline.hpp"
-//#include "helper.hpp"
 
 void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter);
 
