@@ -1,16 +1,11 @@
 #ifndef __SPLINE_HPP__
 #define __SPLINE_HPP__
 
-#include "config.h"
-#include "types.h"
-#include "communication.hpp"
+#include "Config.hpp"
+#include "Types.hpp"
+#include "Communication.hpp"
 #include "tiles.h"
-
-#if defined( KOKKOS_ENABLE_CUDA )
-  #include "Cuda_Transpose.hpp"
-#else
-  #include "OpenMP_Transpose.hpp"
-#endif
+#include "Transpose.hpp"
 
 namespace Spline {
   // prototypes
@@ -131,7 +126,8 @@ namespace Spline {
     int nx_min = fn.begin(0), ny_min = fn.begin(1), nvx_min = fn.begin(2), nvy_min = fn.begin(3);
     int nx_max = fn.end(0), ny_max = fn.end(1), nvx_max = fn.end(2), nvy_max = fn.end(3);
 
-    Impl::Transpose<float64> transpose(nx*ny, nvx*nvy); 
+    typedef typename RealOffsetView4D::array_layout array_layout;
+    Impl::Transpose<float64, array_layout> transpose(nx*ny, nvx*nvy); 
     RealOffsetView4D fn_trans = RealOffsetView4D("fn_trans", 
                                                  {nvx_min, nvx_max-1}, 
                                                  {nvy_min, nvy_max-1},

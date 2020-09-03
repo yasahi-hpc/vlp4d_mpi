@@ -11,10 +11,8 @@ struct Parser {
   int ngpu_ = 1;
   char *file_ = "data.dat";
 
-  Parser() {}
-  ~Parser() {}
-
-  void setArgs(int argc, char **argv) {
+  Parser() = delete;
+  Parser(int argc, char **argv) {
     for(int i = 0; i < argc; i++) {
       if((strcmp(argv[i], "-f") == 0) || (strcmp(argv[i], "--file") == 0)) {
         file_ = argv[++i];
@@ -63,8 +61,8 @@ struct Parser {
         continue;
       }
     }
-  };
-
+  }
+  ~Parser() {}
 };
 
 #endif

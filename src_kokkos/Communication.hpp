@@ -1,15 +1,15 @@
-#ifndef __COMM_H__
-#define __COMM_H__
+#ifndef __COMM_HPP__
+#define __COMM_HPP__
 
 #include <vector>
 #include <mpi.h>
 #include <algorithm>
 #include <cassert>
-#include "types.h"
-#include "config.h"
-#include "index.h"
-#include "utils.hpp"
+#include "Types.hpp"
+#include "Config.hpp"
+#include "Index.hpp"
 #include "Timer.hpp"
+#include "Utils.hpp"
 
 static constexpr int VUNDEF = -100000;
 
@@ -23,7 +23,7 @@ struct Urbnode{
   // Number of processes
   int nbp_;
 
-  // ID of the MPI process ([Y. A comment] duplicated???)
+  // ID of the MPI process
   int pid_;
 };
 
@@ -45,6 +45,7 @@ struct Halo{
 // In Kokkos, we manage all the halos in a single data structure
 struct Halos{
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  typedef Kokkos::View<int*[DIMENSION][DIMENSION], execution_space> RangeView3D;
   RealView2D buf_;
   RealView1D buf_flatten_;
   RangeView2D xmin_;
@@ -57,21 +58,32 @@ struct Halos{
   shape_t<DIMENSION> nhalo_max_;
   int size_;     // buffer size of each halo
   int nb_halos_; // the number of halos
-  int pid_, nbp_;
+  int pid_, nbp_; // MPI rank and the number of processes
 
   std::vector<int> sizes_;
   std::vector<int> pids_;
   std::vector<int> tags_;
 
+  /* Used for boundary condition */
+  RangeView3D map_bc_;  // f -> flatten_buf (used for send buffers)
+  RangeView2D map_orc_; // f -> flatten_buf (used for send buffers)
+  RangeView3D sign1_;
+  RangeView3D sign2_;
+  RangeView3D sign3_;
+  RangeView3D sign4_;
+  IntView1D   orcsum_;
+
   /* Used for merge */
   RangeView2D map_;         // f -> flatten_buf
   IntView2D   flatten_map_; // buf -> flatten_buf
+
   int offset_local_copy_; // The head address for the local copy
   std::vector<int> merged_sizes_; // buffer size of each halo
   std::vector<int> merged_pids_; // merged process id to interact with
   std::vector<int> merged_tags_; //
   std::vector<int> id_map_; // mapping the original id to the merged id
   std::vector<int> merged_heads_;
+  std::vector<int> total_size_orc_;
   int total_size_; // total size of all the buffers
   int nb_merged_halos_; // number of halos after merge
   int nb_nocomms_;
@@ -94,9 +106,346 @@ struct Halos{
     return merged_tags_.at(i);
   }
    
-  int nb_reqs(){ return (nbp_ - nb_nocomms_); };
+  int nb_reqs(){ return (nbp_ - nb_nocomms_); }
+  int nb_halos(){ return nb_halos_; }
 
-  void mergeLists(Config *conf, const std::string name) {
+  template <class ViewType2D>
+  void listBoundary(Config *conf, const std::string name, ViewType2D &h_map_2D2flatten) {
+    const Domain *dom = &(conf->dom_);
+    int nx = dom->nxmax_[0], ny = dom->nxmax_[1], nvx = dom->nxmax_[2], nvy = dom->nxmax_[3];
+    const int nx_min  = dom->local_nxmin_[0] - HALO_PTS;
+    const int ny_min  = dom->local_nxmin_[1] - HALO_PTS;
+    const int nvx_min = dom->local_nxmin_[2] - HALO_PTS;
+    const int nvy_min = dom->local_nxmin_[3] - HALO_PTS;
+    const int nx_max  = dom->local_nxmax_[0] + 1 + HALO_PTS;
+    const int ny_max  = dom->local_nxmax_[1] + 1 + HALO_PTS;
+    const int nvx_max = dom->local_nxmax_[2] + 1 + HALO_PTS;
+    const int nvy_max = dom->local_nxmax_[3] + 1 + HALO_PTS;
+    int bc_sign[8];
+    for(int k = 0; k < DIMENSION; k++) {
+      bc_sign[2 * k + 0] = -1;
+      bc_sign[2 * k + 1] = 1;
+    }
+
+    sign1_   = RangeView3D(name + "_sign1",   total_size_);
+    sign2_   = RangeView3D(name + "_sign2",   total_size_);
+    sign3_   = RangeView3D(name + "_sign3",   total_size_);
+    sign4_   = RangeView3D(name + "_sign4",   total_size_);
+    map_orc_ = RangeView2D(name + "_map_orc", total_size_);
+    map_bc_  = RangeView3D(name + "_map_bc",  total_size_);
+
+    typename RangeView2D::HostMirror h_xmin = Kokkos::create_mirror_view(xmin_);
+    typename RangeView2D::HostMirror h_xmax = Kokkos::create_mirror_view(xmax_);
+    typename RangeView2D::HostMirror h_bc_in_min = Kokkos::create_mirror_view(bc_in_min_);
+    typename RangeView2D::HostMirror h_bc_in_max = Kokkos::create_mirror_view(bc_in_max_);
+    Kokkos::deep_copy(h_xmin, xmin_);
+    Kokkos::deep_copy(h_xmax, xmax_);
+    Kokkos::deep_copy(h_bc_in_min, bc_in_min_);
+    Kokkos::deep_copy(h_bc_in_max, bc_in_max_);
+
+    typename RangeView3D::HostMirror h_sign1 = Kokkos::create_mirror_view(sign1_);
+    typename RangeView3D::HostMirror h_sign2 = Kokkos::create_mirror_view(sign2_);
+    typename RangeView3D::HostMirror h_sign3 = Kokkos::create_mirror_view(sign3_);
+    typename RangeView3D::HostMirror h_sign4 = Kokkos::create_mirror_view(sign4_);
+    typename RangeView2D::HostMirror h_map_orc = Kokkos::create_mirror_view(map_orc_);
+    typename RangeView3D::HostMirror h_map_bc = Kokkos::create_mirror_view(map_bc_);
+
+    int count0 = 0, count1 = 0, count2 = 0, count3 = 0;
+    for(int ib = 0; ib < nb_halos_; ib++) {
+      int halo_min[4], halo_max[4];
+      for(int k = 0; k < DIMENSION; k++) {
+        halo_min[k] = h_xmin(ib, k);
+        halo_max[k] = h_xmax(ib, k);
+      }
+      
+      const int halo_nx =  halo_max[0] - halo_min[0] + 1;
+      const int halo_ny  = halo_max[1] - halo_min[1] + 1;
+      const int halo_nvx = halo_max[2] - halo_min[2] + 1;
+      const int halo_nvy = halo_max[3] - halo_min[3] + 1;
+      
+      int bc_in[8], orcheck[4];
+      int orcsum = 0;
+      char bitconf = 0;
+
+      for(int k = 0; k < 4; k++) {
+        bc_in[2 * k + 0] = h_bc_in_min(ib, k);
+        bc_in[2 * k + 1] = h_bc_in_max(ib, k);
+        orcheck[k] = (bc_in[2 * k] != VUNDEF) || (bc_in[2 * k + 1] != VUNDEF);
+        orcsum += orcheck[k];
+        bitconf |= 1 << k;
+      }
+
+      int sign1[4], sign2[4], sign3[4], sign4[4];
+      for(int k1 = 0; k1 < 8; k1++) {
+        if(bc_in[k1] != VUNDEF) {
+          int vdx[4], vex[4];
+          for(int ii = 0; ii < 4; ii++) {
+            sign1[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+            if(ii == k1/2)
+              sign1[ii] = bc_sign[k1], vdx[ii] = bc_in[k1], vex[ii] = bc_in[k1];
+          }
+
+          for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+            for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+              for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                  int rx  = (nx  + jx  - sign1[0]) % nx;
+                  int ry  = (ny  + jy  - sign1[1]) % ny;
+                  int rvx = (nvx + jvx - sign1[2]) % nvx;
+                  int rvy = (nvy + jvy - sign1[3]) % nvy;
+                  for(int ii = 0; ii < 4; ii++) {
+                    h_sign1(count0, 0, ii) = sign1[ii];
+                  }
+                  h_map_bc(count0, 0, 0) = rx;
+                  h_map_bc(count0, 0, 1) = ry;
+                  h_map_bc(count0, 0, 2) = rvx;
+                  h_map_bc(count0, 0, 3) = rvy;
+                  int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                jy  - halo_min[1],
+                                                jvx - halo_min[2],
+                                                jvy - halo_min[3],
+                                                halo_nx, halo_ny, halo_nvx, halo_nvy);
+                  h_map_orc(count0, 0) = h_map_2D2flatten(idx, ib); //index in 2D buffer 
+                  assert(h_map_2D2flatten(idx, ib) < total_size_);
+
+                  for(int j1 = 1; j1 <= MMAX; j1++) {
+                    assert( (rx  + h_sign1(count0, 0, 0) * j1) >= nx_min  );
+                    assert( (ry  + h_sign1(count0, 0, 1) * j1) >= ny_min  );
+                    assert( (rvx + h_sign1(count0, 0, 2) * j1) >= nvx_min );
+                    assert( (rvy + h_sign1(count0, 0, 3) * j1) >= nvy_min );
+                    
+                    assert( (rx  + h_sign1(count0, 0, 0) * j1) < nx_max  );
+                    assert( (ry  + h_sign1(count0, 0, 1) * j1) < ny_max  );
+                    assert( (rvx + h_sign1(count0, 0, 2) * j1) < nvx_max );
+                    assert( (rvy + h_sign1(count0, 0, 3) * j1) < nvy_max );
+                  }
+                  count0++;
+                } // for(int jx = vdx[0]; jx <= vex[0]; jx++)
+              } // for(int jy = vdx[1]; jy <= vex[1]; jy++)
+            } // for(int jvx = vdx[2]; jvx <= vex[2]; jvx++)
+          } // for(int jvy = vdx[3]; jvy <= vex[3]; jvy++)
+        } // if(bc_in[k1] != VUNDEF)
+      } // for(int k1 = 0; k1 < 8; k1++) {
+
+      if(orcsum > 1) {
+        for(int k1 = 0; k1 < 8; k1++) {
+          for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++) {
+            if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF) {
+              int vdx[4], vex[4];
+              for(int ii = 0; ii < 4; ii++) {
+                sign1[ii] = 0, sign2[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+                if(ii == k1/2)
+                  sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
+                if(ii == k2/2)
+                  sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
+              }
+
+              for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+                for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+                  for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                    for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                      int rx  = (nx  + jx  - sign1[0] - sign2[0]) % nx;
+                      int ry  = (ny  + jy  - sign1[1] - sign2[1]) % ny;
+                      int rvx = (nvx + jvx - sign1[2] - sign2[2]) % nvx;
+                      int rvy = (nvy + jvy - sign1[3] - sign2[3]) % nvy;
+                                                             
+                      for(int ii = 0; ii < 4; ii++) {
+                        h_sign1(count1, 1, ii) = sign1[ii];
+                        h_sign2(count1, 1, ii) = sign2[ii];
+                      }
+
+                      h_map_bc(count1, 1, 0) = rx;
+                      h_map_bc(count1, 1, 1) = ry;
+                      h_map_bc(count1, 1, 2) = rvx;
+                      h_map_bc(count1, 1, 3) = rvy;
+                      int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                    jy  - halo_min[1],
+                                                    jvx - halo_min[2],
+                                                    jvy - halo_min[3],
+                                                    halo_nx, halo_ny, halo_nvx, halo_nvy);
+                      
+                      h_map_orc(count1, 1) = h_map_2D2flatten(idx, ib); //index in 2D buffer 
+                      assert(h_map_2D2flatten(idx, ib) < total_size_);
+                      for(int j2 = 1; j2 <= MMAX; j2++) {
+                        for(int j1 = 1; j1 <= MMAX; j1++) {
+                          assert( (rx  + h_sign1(count1, 1, 0) * j1 + h_sign2(count1, 1, 0) * j2) >= nx_min );
+                          assert( (ry  + h_sign1(count1, 1, 1) * j1 + h_sign2(count1, 1, 1) * j2) >= ny_min );
+                          assert( (rvx + h_sign1(count1, 1, 2) * j1 + h_sign2(count1, 1, 2) * j2) >= nvx_min );
+                          assert( (rvy + h_sign1(count1, 1, 3) * j1 + h_sign2(count1, 1, 3) * j2) >= nvy_min );
+                                     
+                          assert( (rx  + h_sign1(count1, 1, 0) * j1 + h_sign2(count1, 1, 0) * j2) <  nx_max );
+                          assert( (ry  + h_sign1(count1, 1, 1) * j1 + h_sign2(count1, 1, 1) * j2) <  ny_max );
+                          assert( (rvx + h_sign1(count1, 1, 2) * j1 + h_sign2(count1, 1, 2) * j2) <  nvx_max );
+                          assert( (rvy + h_sign1(count1, 1, 3) * j1 + h_sign2(count1, 1, 3) * j2) <  nvy_max );
+                        }
+                      }
+                      count1++;
+                    }
+                  }
+                }
+              }
+            } // if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF)
+          } // for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++)
+        } // for(int k1 = 0; k1 < 8; k1++)
+      } // if(orcsum > 1)
+
+      if(orcsum > 2) {
+        for(int k1 = 0; k1 < 8; k1++) {
+          for(int k2 = 2 * (1 + k1/2); k2 < 8; k2++) {
+            for(int k3 = 2 * (1 + k2/2); k3 < 8; k3++) {
+              if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF && bc_in[k3] != VUNDEF) {
+                int vdx[4], vex[4];
+                for(int ii = 0; ii < 4; ii++) {
+                  sign1[ii] = 0, sign2[ii] = 0, sign3[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+                  if(ii == k1/2)
+                    sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
+                  if(ii == k2/2)
+                    sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
+                  if(ii == k3/2)
+                    sign3[ii] = bc_sign[k3], vex[ii] = vdx[ii] = bc_in[k3];
+                }
+
+                for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+                  for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+                    for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                      for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                        int rx  = (nx  + jx  - sign1[0] - sign2[0] - sign3[0]) % nx;
+                        int ry  = (ny  + jy  - sign1[1] - sign2[1] - sign3[1]) % ny;
+                        int rvx = (nvx + jvx - sign1[2] - sign2[2] - sign3[2]) % nvx;
+                        int rvy = (nvy + jvy - sign1[3] - sign2[3] - sign3[3]) % nvy;
+                        for(int ii = 0; ii < 4; ii++) {
+                          h_sign1(count2, 2, ii) = sign1[ii];
+                          h_sign2(count2, 2, ii) = sign2[ii];
+                          h_sign3(count2, 2, ii) = sign3[ii];
+                        }
+                        h_map_bc(count2, 2, 0) = rx;
+                        h_map_bc(count2, 2, 1) = ry;
+                        h_map_bc(count2, 2, 2) = rvx;
+                        h_map_bc(count2, 2, 3) = rvy;
+                        int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                      jy  - halo_min[1],
+                                                      jvx - halo_min[2],
+                                                      jvy - halo_min[3],
+                                                      halo_nx, halo_ny, halo_nvx, halo_nvy);
+                        h_map_orc(count2, 2) = h_map_2D2flatten(idx, ib); //index in 2D buffer 
+                        assert(h_map_2D2flatten(idx, ib) < total_size_);
+                        for(int j3 = 1; j3 <= MMAX; j3++) {
+                          for(int j2 = 1; j2 <= MMAX; j2++) {
+                            for(int j1 = 1; j1 <= MMAX; j1++) {
+                              assert( (rx  + h_sign1(count2, 2, 0) * j1 + h_sign2(count2, 2, 0) * j2 + h_sign3(count2, 2, 0) * j3) >= nx_min );
+                              assert( (ry  + h_sign1(count2, 2, 1) * j1 + h_sign2(count2, 2, 1) * j2 + h_sign3(count2, 2, 1) * j3) >= ny_min );
+                              assert( (rvx + h_sign1(count2, 2, 2) * j1 + h_sign2(count2, 2, 2) * j2 + h_sign3(count2, 2, 2) * j3) >= nvx_min );
+                              assert( (rvy + h_sign1(count2, 2, 3) * j1 + h_sign2(count2, 2, 3) * j2 + h_sign3(count2, 2, 3) * j3) >= nvy_min );
+                                              
+                              assert( (rx  + h_sign1(count2, 2, 0) * j1 + h_sign2(count2, 2, 0) * j2 + h_sign3(count2, 2, 0) * j3) <  nx_max );
+                              assert( (ry  + h_sign1(count2, 2, 1) * j1 + h_sign2(count2, 2, 1) * j2 + h_sign3(count2, 2, 1) * j3) <  ny_max );
+                              assert( (rvx + h_sign1(count2, 2, 2) * j1 + h_sign2(count2, 2, 2) * j2 + h_sign3(count2, 2, 2) * j3) <  nvx_max );
+                              assert( (rvy + h_sign1(count2, 2, 3) * j1 + h_sign2(count2, 2, 3) * j2 + h_sign3(count2, 2, 3) * j3) <  nvy_max );
+                            }
+                          }
+                        }
+                        count2++;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if(orcsum > 3) {
+        for(int k1 = 0; k1 < 2; k1++) {
+          for(int k2 = 2; k2 < 4; k2++) {
+            for(int k3 = 4; k3 < 6; k3++) {
+              for(int k4 = 6; k4 < 8; k4++) {
+                if(bc_in[k1] != VUNDEF && bc_in[k2] != VUNDEF && bc_in[k3] != VUNDEF && bc_in[k4] != VUNDEF) {
+                  int vdx[4], vex[4];
+                  for(int ii = 0; ii < 4; ii++) {
+                    sign1[ii] = 0, sign2[ii] = 0, sign3[ii] = 0, sign4[ii] = 0, vdx[ii] = halo_min[ii], vex[ii] = halo_max[ii];
+                    if(ii == k1/2)
+                      sign1[ii] = bc_sign[k1], vex[ii] = vdx[ii] = bc_in[k1];
+                    if(ii == k2/2)
+                      sign2[ii] = bc_sign[k2], vex[ii] = vdx[ii] = bc_in[k2];
+                    if(ii == k3/2)
+                      sign3[ii] = bc_sign[k3], vex[ii] = vdx[ii] = bc_in[k3];
+                    if(ii == k4/2)
+                      sign4[ii] = bc_sign[k4], vex[ii] = vdx[ii] = bc_in[k4];
+                  }
+
+                  for(int jvy = vdx[3]; jvy <= vex[3]; jvy++) {
+                    for(int jvx = vdx[2]; jvx <= vex[2]; jvx++) {
+                      for(int jy = vdx[1]; jy <= vex[1]; jy++) {
+                        for(int jx = vdx[0]; jx <= vex[0]; jx++) {
+                          int rx  = (nx  + jx  - sign1[0]) % nx;
+                          int ry  = (ny  + jy  - sign2[1]) % ny;
+                          int rvx = (nvx + jvx - sign3[2]) % nvx;
+                          int rvy = (nvy + jvy - sign4[3]) % nvy;
+                          for(int ii = 0; ii < 4; ii++) {
+                            h_sign1(count3, 3, ii) = sign1[ii];
+                            h_sign2(count3, 3, ii) = sign2[ii];
+                            h_sign3(count3, 3, ii) = sign3[ii];
+                            h_sign4(count3, 3, ii) = sign4[ii];
+                          }
+                                        
+                          h_map_bc(count3, 3, 0) = rx;
+                          h_map_bc(count3, 3, 1) = ry;
+                          h_map_bc(count3, 3, 2) = rvx;
+                          h_map_bc(count3, 3, 3) = rvy;
+                          int idx = Index::coord_4D2int(jx  - halo_min[0],
+                                                        jy  - halo_min[1],
+                                                        jvx - halo_min[2],
+                                                        jvy - halo_min[3],
+                                                        halo_nx, halo_ny, halo_nvx, halo_nvy);
+                                                
+                          h_map_orc(count3, 3) = h_map_2D2flatten(idx, ib); //index in 2D buffer 
+                          assert(h_map_2D2flatten(idx, ib) < total_size_);
+
+                          for(int j4 = 1; j4 <= MMAX; j4++) {
+                            for(int j3 = 1; j3 <= MMAX; j3++) {
+                              for(int j2 = 1; j2 <= MMAX; j2++) {
+                                for(int j1 = 1; j1 <= MMAX; j1++) {
+                                  assert( (rx  + h_sign1(count3, 3, 0) * j1) >= nx_min );
+                                  assert( (ry  + h_sign2(count3, 3, 1) * j2) >= ny_min );
+                                  assert( (rvx + h_sign3(count3, 3, 2) * j3) >= nvx_min );
+                                  assert( (rvy + h_sign4(count3, 3, 3) * j4) >= nvy_min );
+                            
+                                  assert( (rx  + h_sign1(count3, 3, 0) * j1) <  nx_max );
+                                  assert( (ry  + h_sign2(count3, 3, 1) * j2) <  ny_max );
+                                  assert( (rvx + h_sign3(count3, 3, 2) * j3) <  nvx_max );
+                                  assert( (rvy + h_sign4(count3, 3, 3) * j4) <  nvy_max );
+                                }
+                              }
+                            }
+                          }
+                          count3++;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } // for(int ib = 0; ib < nb_halos_; ib++)
+    total_size_orc_.at(0) = count0;
+    total_size_orc_.at(1) = count1;
+    total_size_orc_.at(2) = count2;
+    total_size_orc_.at(3) = count3;
+
+    Kokkos::deep_copy(sign1_,   h_sign1);
+    Kokkos::deep_copy(sign2_,   h_sign2);
+    Kokkos::deep_copy(sign3_,   h_sign3);
+    Kokkos::deep_copy(sign4_,   h_sign4);
+    Kokkos::deep_copy(map_orc_, h_map_orc);
+    Kokkos::deep_copy(map_bc_,  h_map_bc);
+  }
+
+  template <class ViewType2D>
+  void mergeLists(Config *conf, const std::string name, ViewType2D &h_map_2D2flatten) {
     nb_nocomms_ = 1;
     int total_size = 0;
     std::vector<int> id_map( nb_halos_ );
@@ -118,7 +467,7 @@ struct Halos{
       int size = 0;
       int tag = 0;
       if(same_dst.empty()) {
-        if(pid != pid_) nb_nocomms_++;
+        if(pid != pid_) nb_nocomms_++; // In case there is no connection between pid and pid_
       } else {
         tag = tags_[same_dst[0]]; // Use the tag of first element
       }
@@ -182,15 +531,27 @@ struct Halos{
                                               ivy-ivy_min,
                                               nx, ny, nvx, nvy);
               
-                // h_map is used for receive buffer
-                h_map(idx_flatten, 0) = ix;
-                h_map(idx_flatten, 1) = iy;
-                h_map(idx_flatten, 2) = ivx;
-                h_map(idx_flatten, 3) = ivy;
+                // Map is different for send/recv buffers
+                if(name == "send") {
+                  const int ix_bc  = (nx_max  + ix)  % nx_max;
+                  const int iy_bc  = (ny_max  + iy)  % ny_max;
+                  const int ivx_bc = (nvx_max + ivx) % nvx_max;
+                  const int ivy_bc = (nvy_max + ivy) % nvy_max;
+                  h_map(idx_flatten, 0) = ix_bc;
+                  h_map(idx_flatten, 1) = iy_bc;
+                  h_map(idx_flatten, 2) = ivx_bc;
+                  h_map(idx_flatten, 3) = ivy_bc;
+                } else {
+                  h_map(idx_flatten, 0) = ix;
+                  h_map(idx_flatten, 1) = iy;
+                  h_map(idx_flatten, 2) = ivx;
+                  h_map(idx_flatten, 3) = ivy;
+                }
                 
                 // h_flatten_map is used for send buffer
                 h_flatten_map(idx_flatten, 0) = idx;
                 h_flatten_map(idx_flatten, 1) = it;
+                h_map_2D2flatten(idx, it) = idx_flatten;
                 idx_flatten++;
               }
             }
@@ -210,6 +571,7 @@ struct Halos{
     nb_halos_ = list.size();
     pids_.resize(nb_halos_);
     tags_.resize(nb_halos_);
+    total_size_orc_.resize(DIMENSION);
 
     xmin_      = RangeView2D("halo_xmin",  nb_halos_);
     xmax_      = RangeView2D("halo_xmax",  nb_halos_);
@@ -264,8 +626,14 @@ struct Halos{
     nhalo_max_[2] = *std::max_element(nvx_halos.begin(), nvx_halos.end());
     nhalo_max_[3] = *std::max_element(nvy_halos.begin(), nvy_halos.end());
 
-    buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
-    mergeLists(conf, name);
+    typedef IntView2D::HostMirror IntHostView2D;
+    IntHostView2D h_map_2D2flatten(name + "_map_2D2flatten", size_, nb_halos_);
+    mergeLists(conf, name, h_map_2D2flatten);
+    if(name == "send") {
+      // 2D Buffer is used only for send buffer [TO DO] delete this
+      buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
+      listBoundary(conf, name, h_map_2D2flatten);
+    }
   }
 };
 
@@ -312,10 +680,12 @@ public:
   };
 
   ~Distrib(){};
+
   void cleanup() {
     if(recv_buffers_ != nullptr) delete recv_buffers_;
     if(send_buffers_ != nullptr) delete send_buffers_;
   }
+
   void finalize(){
     MPI_Finalize();
   };
@@ -388,6 +758,7 @@ private:
   }
 
   void packAndBoundary(Config *conf, RealOffsetView4D halo_fn);
+  void boundary_condition_(RealOffsetView4D &halo_fn, Halos *send_buffers);
   void unpack(RealOffsetView4D halo_fn);
 
   int mergeElts(std::vector<Halo> &v, std::vector<Halo>::iterator &f, std::vector<Halo>::iterator &g);
@@ -412,6 +783,8 @@ private:
 };
 
 // functors
+
+// [TO DO] Delete this
 struct pack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   Config         *conf_;
@@ -464,6 +837,29 @@ struct pack {
   }
 };
 
+// To survive
+struct pack_ {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  RealOffsetView4D halo_fn_;
+  RealView1D       buf_flatten_;
+  Halos            *send_halos_;
+  RangeView2D      map_;
+
+  pack_(RealOffsetView4D halo_fn, Halos *send_halos)
+    : halo_fn_(halo_fn), send_halos_(send_halos) {
+    buf_flatten_  = send_halos_->buf_flatten_;
+    map_ = send_halos_->map_;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int ix  = map_(idx, 0), iy  = map_(idx, 1);
+    const int ivx = map_(idx, 2), ivy = map_(idx, 3);
+    buf_flatten_(idx) = halo_fn_(ix, iy, ivx, ivy);
+  }
+};
+
+// [TO DO] Delete this
 struct merged_pack {
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   RealView1D buf_flatten_;
@@ -524,6 +920,210 @@ struct local_copy {
   KOKKOS_INLINE_FUNCTION
   void operator()(const int idx) const {
     recv_buf_(idx+recv_offset_) = send_buf_(idx+send_offset_);
+  }
+};
+
+// Version to survive
+struct boundary_condition_orc0 {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  typedef Kokkos::View<int*[DIMENSION][DIMENSION], execution_space> RangeView3D;
+  RealOffsetView4D halo_fn_;
+  RealView1D       buf_flatten_;
+  Halos            *send_halos_;
+  RangeView3D map_bc_;  // f -> flatten_buf (used for send buffers)
+  RangeView2D map_orc_; // f -> flatten_buf (used for send buffers)
+  RangeView3D sign1_;
+  float64 alpha_;
+
+  boundary_condition_orc0(RealOffsetView4D halo_fn, Halos *send_halos)
+    : halo_fn_(halo_fn), send_halos_(send_halos) {
+    buf_flatten_ = send_halos_->buf_flatten_;
+    map_bc_ = send_halos_->map_bc_;
+    map_orc_ = send_halos_->map_orc_;
+    sign1_ = send_halos_->sign1_;
+    alpha_ = sqrt(3) - 2;
+  }
+
+  // For test purpose, parallelized over ib only
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int rx  = map_bc_(idx, 0, 0), ry  = map_bc_(idx, 0, 1);
+    const int rvx = map_bc_(idx, 0, 2), rvy = map_bc_(idx, 0, 3);
+    const int idx_dst = map_orc_(idx, 0);
+    const int sign10 = sign1_(idx, 0, 0);
+    const int sign11 = sign1_(idx, 0, 1);
+    const int sign12 = sign1_(idx, 0, 2);
+    const int sign13 = sign1_(idx, 0, 3);
+    float64 fsum = 0.;
+    float64 alphap1 = alpha_;
+    for(int j1 = 1; j1 <= MMAX; j1++) {
+      fsum += halo_fn_(rx  + sign10 * j1,
+                       ry  + sign11 * j1,
+                       rvx + sign12 * j1,
+                       rvy + sign13 * j1
+                      ) * alphap1;
+      alphap1 *= alpha_;
+    }
+    buf_flatten_(idx_dst) = fsum;
+  }
+};
+
+struct boundary_condition_orc1 {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  typedef Kokkos::View<int*[DIMENSION][DIMENSION], execution_space> RangeView3D;
+  RealOffsetView4D halo_fn_;
+  RealView1D       buf_flatten_;
+  Halos            *send_halos_;
+  RangeView3D map_bc_;  // f -> flatten_buf (used for send buffers)
+  RangeView2D map_orc_; // f -> flatten_buf (used for send buffers)
+  RangeView3D sign1_, sign2_;
+  float64 alpha_;
+
+  boundary_condition_orc1(RealOffsetView4D halo_fn, Halos *send_halos)
+    : halo_fn_(halo_fn), send_halos_(send_halos) {
+    buf_flatten_ = send_halos_->buf_flatten_;
+    map_bc_ = send_halos_->map_bc_;
+    map_orc_ = send_halos_->map_orc_;
+    sign1_ = send_halos_->sign1_;
+    sign2_ = send_halos_->sign2_;
+    alpha_ = sqrt(3) - 2;
+  }
+
+  // For test purpose, parallelized over ib only
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int rx  = map_bc_(idx, 1, 0), ry  = map_bc_(idx, 1, 1);
+    const int rvx = map_bc_(idx, 1, 2), rvy = map_bc_(idx, 1, 3);
+    const int idx_dst = map_orc_(idx, 1);
+    const int sign10 = sign1_(idx, 1, 0), sign20 = sign2_(idx, 1, 0);
+    const int sign11 = sign1_(idx, 1, 1), sign21 = sign2_(idx, 1, 1);
+    const int sign12 = sign1_(idx, 1, 2), sign22 = sign2_(idx, 1, 2);
+    const int sign13 = sign1_(idx, 1, 3), sign23 = sign2_(idx, 1, 3);
+    float64 fsum = 0.;
+    float64 alphap2 = alpha_;
+    for(int j2 = 1; j2 <= MMAX; j2++) {
+      float64 alphap1 = alpha_ * alphap2;
+      for(int j1 = 1; j1 <= MMAX; j1++) {
+        fsum += halo_fn_(rx  + sign10 * j1 + sign20 * j2,
+                         ry  + sign11 * j1 + sign21 * j2,
+                         rvx + sign12 * j1 + sign22 * j2,
+                         rvy + sign13 * j1 + sign23 * j2) * alphap1;
+        alphap1 *= alpha_;
+      }
+      alphap2 *= alpha_;
+    }
+    buf_flatten_(idx_dst) = fsum;
+  }
+};
+
+struct boundary_condition_orc2 {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  typedef Kokkos::View<int*[DIMENSION][DIMENSION], execution_space> RangeView3D;
+  RealOffsetView4D halo_fn_;
+  RealView1D       buf_flatten_;
+  Halos            *send_halos_;
+  RangeView3D map_bc_;  // f -> flatten_buf (used for send buffers)
+  RangeView2D map_orc_; // f -> flatten_buf (used for send buffers)
+  RangeView3D sign1_, sign2_, sign3_;
+  float64 alpha_;
+
+  boundary_condition_orc2(RealOffsetView4D halo_fn, Halos *send_halos)
+    : halo_fn_(halo_fn), send_halos_(send_halos) {
+    buf_flatten_ = send_halos_->buf_flatten_;
+    map_bc_ = send_halos_->map_bc_;
+    map_orc_ = send_halos_->map_orc_;
+    sign1_ = send_halos_->sign1_;
+    sign2_ = send_halos_->sign2_;
+    sign3_ = send_halos_->sign3_;
+    alpha_ = sqrt(3) - 2;
+  }
+
+  // For test purpose, parallelized over ib only
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int rx  = map_bc_(idx, 2, 0), ry  = map_bc_(idx, 2, 1);
+    const int rvx = map_bc_(idx, 2, 2), rvy = map_bc_(idx, 2, 3);
+    const int idx_dst = map_orc_(idx, 2);
+    const int sign10 = sign1_(idx, 2, 0), sign20 = sign2_(idx, 2, 0), sign30 = sign3_(idx, 2, 0);
+    const int sign11 = sign1_(idx, 2, 1), sign21 = sign2_(idx, 2, 1), sign31 = sign3_(idx, 2, 1);
+    const int sign12 = sign1_(idx, 2, 2), sign22 = sign2_(idx, 2, 2), sign32 = sign3_(idx, 2, 2);
+    const int sign13 = sign1_(idx, 2, 3), sign23 = sign2_(idx, 2, 3), sign33 = sign3_(idx, 2, 3);
+    float64 fsum = 0.;
+    float64 alphap3 = alpha_;
+    for(int j3 = 1; j3 <= MMAX; j3++) {
+      float64 alphap2 = alpha_ * alphap3;
+      for(int j2 = 1; j2 <= MMAX; j2++) {
+        float64 alphap1 = alpha_ * alphap2;
+        for(int j1 = 1; j1 <= MMAX; j1++) {
+          fsum += halo_fn_(rx  + sign10 * j1 + sign20 * j2 + sign30 * j3,
+                           ry  + sign11 * j1 + sign21 * j2 + sign31 * j3,
+                           rvx + sign12 * j1 + sign22 * j2 + sign32 * j3,
+                           rvy + sign13 * j1 + sign23 * j2 + sign33 * j3) * alphap1;
+                  alphap1 *= alpha_;
+        }
+        alphap2 *= alpha_;
+      }
+      alphap3 *= alpha_;
+    }
+    buf_flatten_(idx_dst) = fsum;
+  }
+};
+
+struct boundary_condition_orc3 {
+  typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  typedef Kokkos::View<int*[DIMENSION][DIMENSION], execution_space> RangeView3D;
+  RealOffsetView4D halo_fn_;
+  RealView1D       buf_flatten_;
+  Halos            *send_halos_;
+  RangeView3D map_bc_;  // f -> flatten_buf (used for send buffers)
+  RangeView2D map_orc_; // f -> flatten_buf (used for send buffers)
+  RangeView3D sign1_, sign2_, sign3_, sign4_;
+  float64 alpha_;
+
+  boundary_condition_orc3(RealOffsetView4D halo_fn, Halos *send_halos)
+    : halo_fn_(halo_fn), send_halos_(send_halos) {
+    buf_flatten_ = send_halos_->buf_flatten_;
+    map_bc_ = send_halos_->map_bc_;
+    map_orc_ = send_halos_->map_orc_;
+    sign1_ = send_halos_->sign1_;
+    sign2_ = send_halos_->sign2_;
+    sign3_ = send_halos_->sign3_;
+    sign4_ = send_halos_->sign4_;
+    alpha_ = sqrt(3) - 2;
+  }
+
+  // For test purpose, parallelized over ib only
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int rx  = map_bc_(idx, 3, 0), ry  = map_bc_(idx, 3, 1);
+    const int rvx = map_bc_(idx, 3, 2), rvy = map_bc_(idx, 3, 3);
+    const int idx_dst = map_orc_(idx, 3);
+    const int sign10 = sign1_(idx, 3, 0);
+    const int sign21 = sign2_(idx, 3, 1);
+    const int sign32 = sign3_(idx, 3, 2);
+    const int sign43 = sign4_(idx, 3, 3);
+    float64 fsum = 0.;
+    float64 alphap4 = alpha_;
+    for(int j4 = 1; j4 <= MMAX; j4++) {
+      float64 alphap3 = alpha_ * alphap4;
+      for(int j3 = 1; j3 <= MMAX; j3++) {
+        float64 alphap2 = alpha_ * alphap3;
+        for(int j2 = 1; j2 <= MMAX; j2++) {
+          float64 alphap1 = alpha_ * alphap2;
+          for(int j1 = 1; j1 <= MMAX; j1++) {
+            fsum += halo_fn_(rx  + sign10 * j1,
+                             ry  + sign21 * j2,
+                             rvx + sign32 * j3,
+                             rvy + sign43 * j4) * alphap1;
+            alphap1 *= alpha_;
+          }
+          alphap2 *= alpha_;
+        }
+        alphap3 *= alpha_;
+      }
+      alphap4 *= alpha_;
+    }
+    buf_flatten_(idx_dst) = fsum;
   }
 };
 

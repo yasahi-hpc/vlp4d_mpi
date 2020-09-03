@@ -1,13 +1,12 @@
 #ifndef __DIAGS_HPP__
 #define __DIAGS_HPP__
 
-#include "types.h"
-#include "config.h"
-#include "efield.hpp"
-#include "communication.hpp"
+#include "Types.hpp"
+#include "Config.hpp"
+#include "Efield.hpp"
+#include "Communication.hpp"
 
-struct Diags
-{
+struct Diags {
 private:
   typedef RealView1D::HostMirror RealHostView1D;
   RealHostView1D nrj_;
@@ -19,7 +18,7 @@ private:
 
 public:
   Diags(Config *conf);
-  virtual ~Diags();
+  ~Diags();
 
   void compute(Config *conf, Efield *ef, int iter);
   void computeL2norm(Config *conf, RealOffsetView4D fn, int iter);

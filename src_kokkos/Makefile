@@ -1,5 +1,4 @@
 # Device can be p100, v100, bdw, skx, tx2
-DEVICE=p100
 KOKKOS_DEVICES = $(DEVICE)
 SRC = $(wildcard ./*.cpp)
 vpath %.cpp $(sort $(dir $(SRC)))
@@ -40,7 +39,7 @@ ifneq (,$(findstring 3D,$(RANGE_POLICY)))
   CXXFLAGS += -DTILE_X3=1  -DTILE_Y3=1  -DTILE_Z3=16
 endif
 LINK = mpicxx
-LDFLAGS = -lfftw3_threads -lfftw3
+LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
 EXE = vlp4d.tsubame3.0_bdw_kokkos
 KOKKOS_DEVICES = "OpenMP"
 KOKKOS_ARCH = "BDW"

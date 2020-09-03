@@ -1,7 +1,7 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef __CONFIG_HPP__
+#define __CONFIG_HPP__
 
-#include "types.h"
+#include "Types.hpp"
 
 static constexpr int DIMENSION = 4;
 #define HALO_PTS 3

@@ -1,14 +1,14 @@
 #ifndef __TIMESTEP_HPP__
 #define __TIMESTEP_HPP__
 
-#include "efield.hpp"
-#include "diags.hpp"
-#include "types.h"
+#include "Efield.hpp"
+#include "Diags.hpp"
+#include "Types.hpp"
 #include "Math.hpp"
-#include "communication.hpp"
+#include "Communication.hpp"
 #include "Advection.hpp"
 #include "Timer.hpp"
-#include "helper.hpp"
+#include "Spline.hpp"
 
 void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter);
 
@@ -18,40 +18,48 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
   // Exchange halo of the local domain in order to perform
   // the advection afterwards (the interpolation needs the
   // extra points located in the halo region)
-  comm.exchangeHalo(conf, fn, timers); // [OK]
+  comm.exchangeHalo(conf, fn, timers);
 
   timers[Splinecoeff_xy]->begin();
-  Spline::computeCoeff_xy(conf, fn); // [OK]
+  Spline::computeCoeff_xy(conf, fn);
   Impl::deep_copy(fnp1, fn);
-  Kokkos::fence();
   timers[Splinecoeff_xy]->end();
 
   timers[Advec2D]->begin();
-  Advection::advect_2D_xy(conf, fn, 0.5 * dom->dt_); // [OK]
-  Kokkos::fence();
+  Advection::advect_2D_xy(conf, fn, 0.5 * dom->dt_);
   timers[Advec2D]->end();
 
-  timers[Field]->begin();
-  field_rho(conf, comm, fn, ef); // [May be done]
+  timers[TimerEnum::Field]->begin();
+  field_rho(conf, comm, fn, ef);
+  timers[TimerEnum::Field]->end();
+
+  timers[TimerEnum::AllReduce]->begin();
+  field_reduce(conf, ef);
+  timers[TimerEnum::AllReduce]->end();
+
+  timers[TimerEnum::Fourier]->begin();
   field_poisson(conf, ef, dg, iter);
-  Kokkos::fence();
-  timers[Field]->end();
+  timers[TimerEnum::Fourier]->end();
 
   timers[Splinecoeff_vxvy]->begin();
-  Spline::computeCoeff_vxvy(conf, fnp1); // [TO DO]
-  Kokkos::fence();
+  Spline::computeCoeff_vxvy(conf, fnp1);
   timers[Splinecoeff_vxvy]->end();
 
   timers[Advec4D]->begin();
-  Advection::advect_4D(conf, ef, fnp1, fn, dom->dt_); // [May be done]
-  Kokkos::fence();
+  Advection::advect_4D(conf, ef, fnp1, fn, dom->dt_);
   timers[Advec4D]->end();
 
-  timers[Field]->begin();
-  field_rho(conf, comm, fnp1, ef); // [May be done]
+  timers[TimerEnum::Field]->begin();
+  field_rho(conf, comm, fnp1, ef);
+  timers[TimerEnum::Field]->end();
+
+  timers[TimerEnum::AllReduce]->begin();
+  field_reduce(conf, ef);
+  timers[TimerEnum::AllReduce]->end();
+
+  timers[TimerEnum::Fourier]->begin();
   field_poisson(conf, ef, dg, iter);
-  Kokkos::fence();
-  timers[Field]->end();
+  timers[TimerEnum::Fourier]->end();
 
   timers[Diag]->begin();
   dg->computeL2norm(conf, fnp1, iter);

@@ -1,280 +1,200 @@
 #ifndef __OPENMP_FFT_HPP__
 #define __OPENMP_FFT_HPP__
 
+/* 
+ * Simple wrapper for FFT class (only 2D FFT implemented now)
+ * fftw interface with OpenMP parallelization
+ * Input data can be LayoutLeft or LayoutRight (default)
+ *
+ */
+
 #include <fftw3.h>
 #include <omp.h>
 #include <cassert>
-#include <iostream>
-#include "types.h"
-#include "index.h"
+#include <type_traits>
+#include <Kokkos_Core.hpp>
+#include <Kokkos_Complex.hpp>
+#include "Index.hpp"
+
+template <typename RealType> using Complex = Kokkos::complex<RealType>;
 
 namespace Impl {
+
+  template <typename RealType, class ArrayLayout = Kokkos::LayoutRight,
+            typename std::enable_if<std::is_same<RealType, float>::value ||
+                                    std::is_same<RealType, double>::value
+                                   >::type * = nullptr>
   struct FFT {
-    int nx1_, nx2_, nb_batches_;
-    int nx1h_, nx2h_;
-    fftw_plan forward_c2c_plan_, forward_r2c_plan_;
-    fftw_plan backward_c2c_plan_, backward_c2r_plan_;
+    private:
+      int nx1_, nx2_, nb_batches_;
+      int nx1h_, nx2h_;
 
-    // Thread private buffer
-    complex128 *dptr_buffer_c_;
-    complex128 *thread_private_buffers_nx1h_, *thread_private_buffers_nx2_;
-    complex128 *thread_private_buffers_nx2_out_;
-    float64    *thread_private_buffers_nx1_r2c_;
-    float64    *thread_private_buffers_nx1_c2r_;
+      // fftwPlan type is defined for each precision
+      typedef typename std::conditional<std::is_same<RealType, float>::value, fftwf_plan, fftw_plan>::type fftwPlanType;
+      fftwPlanType forward_c2c_plan_, forward_r2c_plan_;
+      fftwPlanType backward_c2c_plan_, backward_c2r_plan_;
 
-    ComplexView3D d_buffer_c_;
-    ComplexView2D d_thread_private_buffers_nx1h_, d_thread_private_buffers_nx2_;
-    ComplexView2D d_thread_private_buffers_nx2_out_;
-    RealView2D    d_buffers_nx1_r2c_, d_buffers_nx1_c2r_;
+      // Normalization coefficient
+      RealType normcoeff_;
 
+      // Thread private buffer
+      Complex<RealType> *buffer_c_;
+      Complex<RealType> *thread_private_buffers_nx1h_, *thread_private_buffers_nx2_;
+      Complex<RealType> *thread_private_buffers_nx2_out_;
+      RealType          *thread_private_buffers_nx1_r2c_;
+      RealType          *thread_private_buffers_nx1_c2r_;
+
+    public:
+      using array_layout = ArrayLayout;
+
+
+    public:
     FFT(int nx1, int nx2)
-      : nx1_(nx1), nx2_(nx2), nb_batches_(1) {
+      : nx1_(nx1), nx2_(nx2), nb_batches_(1), 
+        buffer_c_(nullptr), thread_private_buffers_nx1h_(nullptr), thread_private_buffers_nx2_(nullptr),
+        thread_private_buffers_nx2_out_(nullptr), thread_private_buffers_nx1_r2c_(nullptr), thread_private_buffers_nx1_c2r_(nullptr) 
+    {
       init();
     }
 
     FFT(int nx1, int nx2, int batch)
-      : nx1_(nx1), nx2_(nx2), nb_batches_(batch) {
+      : nx1_(nx1), nx2_(nx2), nb_batches_(batch),
+        buffer_c_(nullptr), thread_private_buffers_nx1h_(nullptr), thread_private_buffers_nx2_(nullptr),
+        thread_private_buffers_nx2_out_(nullptr), thread_private_buffers_nx1_r2c_(nullptr), thread_private_buffers_nx1_c2r_(nullptr) 
+    {
       init();
     }
 
     virtual ~FFT() {
-      fftw_destroy_plan(forward_c2c_plan_);
-      fftw_destroy_plan(backward_c2c_plan_);
-      fftw_destroy_plan(forward_r2c_plan_);
-      fftw_destroy_plan(backward_c2r_plan_);
+      if(buffer_c_ != nullptr)                       delete [] buffer_c_;
+      if(thread_private_buffers_nx1h_ != nullptr)    delete [] thread_private_buffers_nx1h_;
+      if(thread_private_buffers_nx2_ != nullptr)     delete [] thread_private_buffers_nx2_;
+      if(thread_private_buffers_nx2_out_ != nullptr) delete [] thread_private_buffers_nx2_out_;
+      if(thread_private_buffers_nx1_r2c_ != nullptr) delete [] thread_private_buffers_nx1_r2c_;
+      if(thread_private_buffers_nx1_c2r_ != nullptr) delete [] thread_private_buffers_nx1_c2r_;
+
+      destroyPlans();
     }
 
-    void fft(complex128 *dptr_in, complex128 *dptr_out) {
-      fftw_complex *in  = reinterpret_cast<fftw_complex*>(dptr_in);
-      fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
-      fftw_execute_dft(forward_c2c_plan_, in, out);
+    public:
+    RealType normcoeff() {return normcoeff_;}
+    int nx1() {return nx1_;}
+    int nx2() {return nx2_;}
+    int nx1h() {return nx1h_;}
+    int nx2h() {return nx2h_;}
+    int nb_batches() {return nb_batches_;}
+
+    // Interfaces called from outside 
+    void fft(Complex<RealType> *dptr_in, Complex<RealType> *dptr_out) {
+      fft_(dptr_in, dptr_out);
+    }
+                            
+    void rfft(RealType *dptr_in, Complex<RealType> *dptr_out) {
+      rfft_(dptr_in, dptr_out);
+    }
+                            
+    void ifft(Complex<RealType> *dptr_in, Complex<RealType> *dptr_out) {
+      ifft_(dptr_in, dptr_out);
+    }
+                            
+    void irfft(Complex<RealType> *dptr_in, RealType *dptr_out) {
+      irfft_(dptr_in, dptr_out);
     }
 
-    void fftr2c(float64 *dptr_in, complex128 *dptr_out) {
-      fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
-      fftw_execute_dft_r2c(forward_r2c_plan_, dptr_in, out);
-    }
-
-    void ifft(complex128 *dptr_in, complex128 *dptr_out) {
-      fftw_complex *in  = reinterpret_cast<fftw_complex*>(dptr_in);
-      fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
-      fftw_execute_dft(backward_c2c_plan_, in, out);
-    }
-
-    void ifftc2r(complex128 *dptr_in, float64 *dptr_out) {
-      fftw_complex *in = reinterpret_cast<fftw_complex*>(dptr_in);
-      fftw_execute_dft_c2r(backward_c2r_plan_, in, dptr_out);
-    }
-
-    /* In the host code, we assume LayoutRight (C style)
+    /* @brief 2D FFT wrapper for batched case
+     * @param[in]  dptr_in(nx1h,nx2,batch)
+     * @param[out] dptr_out(nx1,nx2,batch)
      */
-    void fft2(float64 *dptr_in, complex128 *dptr_out) {
+    void rfft2(RealType *dptr_in, Complex<RealType> *dptr_out) {
       if(nb_batches_ == 1) {
-        fft2_serial(dptr_in, dptr_out);
-      }
-      else {
-        fft2_batch(dptr_in, dptr_out);
+        rfft2_serial_(dptr_in, dptr_out);
+      } else {
+        rfft2_batch_(dptr_in, dptr_out);
       }
     }
 
     /* @brief 2D FFT wrapper for batched case
-     *        In the host code, we assume LayoutRight (C style)
      * @param[in]  dptr_in(nx1h,nx2,batch)
      * @param[out] dptr_out(nx1,nx2,batch)
      */
-    void ifft2(complex128 *dptr_in, float64 *dptr_out) {
+    void irfft2(Complex<RealType> *dptr_in, RealType *dptr_out) {
       if(nb_batches_ == 1) {
-        ifft2_serial(dptr_in, dptr_out);
-      }
-      else {
-        ifft2_batch(dptr_in, dptr_out);
+        irfft2_serial_(dptr_in, dptr_out);
+      } else {
+        irfft2_batch_(dptr_in, dptr_out);
       }
     }
 
     private:
-    /* @brief 2D FFT wrapper for batched case
-     *        In the host code, we assume LayoutRight (C style)
-     * @param[in]  dptr_in(nx1,nx2)
-     * @param[out] dptr_out(nx1h,nx2)
-     */
-    void fft2_serial(float64 *dptr_in, complex128 *dptr_out) {
+    // Initialization
+    void allocBuffers() {
+      int nb_threads=0;
       #pragma omp parallel
-      {
-        int tid = omp_get_thread_num();
-        float64    *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
-        complex128 *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
-        complex128 *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
-        // Fourier Transform in x direction
-        #pragma omp for schedule(static)
-        for(int ix2=0; ix2 < nx2_; ix2++) {
-          for(int ix1=0; ix1 < nx1_; ix1++) {
-            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1_);
-            thread_private_buffer_nx1[ix1] = dptr_in[idx];
-          }
-          fftr2c(thread_private_buffer_nx1, thread_private_buffer_nx1h);
+      nb_threads = omp_get_num_threads();
 
-          for(int ix1=0; ix1 < nx1h_; ix1++) {
-            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1h_);
-            dptr_buffer_c_[idx] = thread_private_buffer_nx1h[ix1];
-          }
-        }
-
-        // Fourier Transform in y direction
-        #pragma omp for schedule(static)
-        for(int ix1=0; ix1 < nx1h_; ix1++) {
-          int offset = nx2_ * ix1;
-          fft(&dptr_buffer_c_[offset], thread_private_buffer_nx2);
-          for(int ix2=0; ix2 < nx2_; ix2++) {
-            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1h_);
-            dptr_out[idx] = thread_private_buffer_nx2[ix2];
-          }
-        }
-      }
+      buffer_c_                       = new Complex<RealType>[nb_batches_*nx1h_*nx2_];
+      thread_private_buffers_nx1h_    = new Complex<RealType>[nb_threads*nx1h_];
+      thread_private_buffers_nx2_     = new Complex<RealType>[nb_threads*nx2_];
+      thread_private_buffers_nx2_out_ = new Complex<RealType>[nb_threads*nx2_];
+      thread_private_buffers_nx1_r2c_ = new RealType[nb_threads*nx1_];
+      thread_private_buffers_nx1_c2r_ = new RealType[nb_threads*(nx1_+2)];
     }
 
-    /* @brief 2D FFT wrapper for batched case
-     *        In the host code, we assume LayoutRight (C style)
-     * @param[in]  dptr_in(nx1,nx2,batch)
-     * @param[out] dptr_out(nx1h,nx2,batch)
-     */
-    void fft2_batch(float64 *dptr_in, complex128 *dptr_out) {
-      #pragma omp parallel
-      {
-        int tid = omp_get_thread_num();
-        float64    *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
-        complex128 *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
-        complex128 *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
-        // Fourier Transform in x direction
-        #pragma omp for schedule(static), collapse(2)
-        for(int ib=0; ib<nb_batches_; ib++) {
-          for(int ix2=0; ix2 < nx2_; ix2++) {
-            for(int ix1=0; ix1 < nx1_; ix1++) {
-              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1_);
-              thread_private_buffer_nx1[ix1] = dptr_in[idx];
-            }
-
-            fftr2c(thread_private_buffer_nx1, thread_private_buffer_nx1h);
-
-            for(int ix1=0; ix1 < nx1h_; ix1++) {
-              int idx = Index::coord_3D2int(ix2, ix1, ib, nx2_, nx1h_, nb_batches_);
-              dptr_buffer_c_[idx] = thread_private_buffer_nx1h[ix1];
-            }
-          }
-        }
-
-        // Fourier Transform in y direction
-        #pragma omp for schedule(static), collapse(2)
-        for(int ib=0; ib<nb_batches_; ib++) {
-          for(int ix1=0; ix1 < nx1h_; ix1++) {
-            int offset = nx2_ * Index::coord_2D2int(ix1, ib, nx1h_, nb_batches_);
-            fft(&dptr_buffer_c_[offset], thread_private_buffer_nx2);
-            for(int ix2=0; ix2 < nx2_; ix2++) {
-              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1h_);
-              dptr_out[idx] = thread_private_buffer_nx2[ix2];
-            }
-          }
-        }
-      }
-    }
-
-    /* @brief 2D FFT wrapper for serial case
-     *        In the host code, we assume LayoutRight (C style)
-     * @param[in]  dptr_in(nx1h,nx2)
-     * @param[out] dptr_out(nx1,nx2)
-     */
-    void ifft2_serial(complex128 *dptr_in, float64 *dptr_out) {
-      #pragma omp parallel
-      {
-        int tid = omp_get_thread_num();
-        float64    *thread_private_buffer_nx1 = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
-        complex128 *thread_private_buffer_nx2 = &thread_private_buffers_nx2_[nx2_*tid];
-        complex128 *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
-        // Inverse Fourier Transform in y direction
-        #pragma omp for schedule(static)
-        for(int ix1=0; ix1 < nx1h_; ix1++) {
-          for(int ix2=0; ix2 < nx2_; ix2++) {
-            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1h_);
-            thread_private_buffer_nx2[ix2] = dptr_in[idx];
-          }
-          ifft(thread_private_buffer_nx2, thread_private_buffer_nx2_out);
-          for(int ix2=0; ix2 < nx2_; ix2++) {
-            int idx = Index::coord_2D2int(ix1, ix2, nx1h_, nx2_);
-            dptr_buffer_c_[idx] = thread_private_buffer_nx2_out[ix2];
-          }
-        }
-        
-        // Inverse Fourier Transform in x direction
-        #pragma omp for schedule(static)
-        for(int ix2=0; ix2 < nx2_; ix2++) {
-          int offset_in  = nx1h_ * ix2;
-
-          ifftc2r(&dptr_buffer_c_[offset_in], thread_private_buffer_nx1);
-          for(int ix1=0; ix1 < nx1_; ix1++) {
-            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1_);
-            dptr_out[idx] = thread_private_buffer_nx1[ix1];
-          }
-        }
-      }
-    }
-
-    /* @brief 2D FFT wrapper for batched case
-     *        In the host code, we assume LayoutRight (C style)
-     * @param[in]  dptr_in(nx1h,nx2,batch)
-     * @param[out] dptr_out(nx1,nx2,batch)
-     */
-    void ifft2_batch(complex128 *dptr_in, float64 *dptr_out) {
-      #pragma omp parallel
-      {
-        int tid = omp_get_thread_num();
-        float64    *thread_private_buffer_nx1     = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
-        complex128 *thread_private_buffer_nx2     = &thread_private_buffers_nx2_[nx2_*tid];
-        complex128 *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
-        // Inverse Fourier Transform in y direction
-        #pragma omp for schedule(static), collapse(2)
-        for(int ib=0; ib < nb_batches_; ib++) {
-          for(int ix1=0; ix1 < nx1h_; ix1++) {
-            for(int ix2=0; ix2 < nx2_; ix2++) {
-              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1h_);
-              thread_private_buffer_nx2[ix2] = dptr_in[idx];
-            }
-            ifft(thread_private_buffer_nx2, thread_private_buffer_nx2_out);
-            for(int ix2=0; ix2 < nx2_; ix2++) {
-              int idx = Index::coord_3D2int(ix1, ix2, ib, nx1h_, nx2_, nb_batches_);
-              dptr_buffer_c_[idx] = thread_private_buffer_nx2_out[ix2];
-            }
-          }
-        }
-        
-        // Inverse Fourier Transform in x direction
-        #pragma omp for schedule(static), collapse(2)
-        for(int ib=0; ib < nb_batches_; ib++) {
-          for(int ix2=0; ix2 < nx2_; ix2++) {
-            int offset  = nx1h_ * Index::coord_2D2int(ix2, ib, nx2_, nb_batches_);
-
-            ifftc2r(&dptr_buffer_c_[offset], thread_private_buffer_nx1);
-            for(int ix1=0; ix1 < nx1_; ix1++) {
-              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1_);
-              dptr_out[idx] = thread_private_buffer_nx1[ix1];
-            }
-          }
-        }
-      }
-    }
-
-    void init() {
+    // float type
+    template <typename RType = RealType>
+    typename std::enable_if<std::is_same<RType, float>::value, void>::type
+    init() {
       nx1h_ = nx1_/2 + 1;
       nx2h_ = nx2_/2 + 1;
 
+      normcoeff_ = static_cast<RealType>(1.0) / static_cast<RealType>(nx1_ * nx2_);
       assert(nb_batches_ >= 1);
 
-      // Initialize fftw
+      // Single precision
+      fftwf_complex *c_in, *c_out;
+      fftwf_complex *c_in_c2r, *c_out_r2c;
+      float         *in, *out;
+
+      c_in  = fftwf_alloc_complex(nx2_);
+      c_out = fftwf_alloc_complex(nx2_);
+            
+      in  = fftwf_alloc_real(nx1_);
+      out = fftwf_alloc_real(nx1_+2);
+      c_in_c2r = fftwf_alloc_complex(nx1h_);
+      c_out_r2c = fftwf_alloc_complex(nx1h_);
+
+      forward_c2c_plan_  = fftwf_plan_dft_1d(nx2_, c_in, c_out, FFTW_FORWARD,  FFTW_ESTIMATE);
+      backward_c2c_plan_ = fftwf_plan_dft_1d(nx2_, c_out, c_in, FFTW_BACKWARD, FFTW_ESTIMATE);
+
+      forward_r2c_plan_  = fftwf_plan_dft_r2c_1d(nx1_, in, c_out_r2c, FFTW_ESTIMATE);
+      backward_c2r_plan_ = fftwf_plan_dft_c2r_1d(nx1_, c_in_c2r, out, FFTW_ESTIMATE);
+
+      fftwf_free(in);   fftwf_free(out);
+      fftwf_free(c_in); fftwf_free(c_out);
+      fftwf_free(c_in_c2r); fftwf_free(c_out_r2c);
+
+      // Malloc thread private buffers
+      allocBuffers();
+    }
+
+    // double type
+    template <typename RType = RealType>
+    typename std::enable_if<std::is_same<RType, double>::value, void>::type
+    init() {
+      nx1h_ = nx1_/2 + 1;
+      nx2h_ = nx2_/2 + 1;
+
+      normcoeff_ = static_cast<RealType>(1.0) / static_cast<RealType>(nx1_ * nx2_);
+      assert(nb_batches_ >= 1);
+
+      // Double precision
       fftw_complex *c_in, *c_out;
       fftw_complex *c_in_c2r, *c_out_r2c;
-      float64      *in, *out;
+      double       *in, *out;
 
       c_in = fftw_alloc_complex(nx2_);
       c_out = fftw_alloc_complex(nx2_);
-      
+                  
       in = fftw_alloc_real(nx1_);
       out = fftw_alloc_real(nx1_+2);
       c_in_c2r = fftw_alloc_complex(nx1h_);
@@ -291,25 +211,427 @@ namespace Impl {
       fftw_free(c_in_c2r); fftw_free(c_out_r2c);
 
       // Malloc thread private buffers
-      int nb_threads=0;
+      allocBuffers();
+    }
+
+    // Finalization
+    // float
+    template <typename RType = RealType>
+    typename std::enable_if<std::is_same<RType, float>::value, void>::type
+    destroyPlans() {
+      fftwf_destroy_plan(forward_c2c_plan_);
+      fftwf_destroy_plan(backward_c2c_plan_);
+      fftwf_destroy_plan(forward_r2c_plan_);
+      fftwf_destroy_plan(backward_c2r_plan_);
+    }
+
+    // double
+    template <typename RType = RealType>
+    typename std::enable_if<std::is_same<RType, double>::value, void>::type
+    destroyPlans() {
+      fftw_destroy_plan(forward_c2c_plan_);
+      fftw_destroy_plan(backward_c2c_plan_);
+      fftw_destroy_plan(forward_r2c_plan_);
+      fftw_destroy_plan(backward_c2r_plan_);
+    }
+
+    private:
+    // Layout Left specialization
+    /* @brief 2D FFT wrapper for serial case (LayoutLeft)
+     * @param[in]  dptr_in(nx1,nx2)
+     * @param[out] dptr_out(nx1h,nx2)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutLeft>::value, void>::type
+    rfft2_serial_(RealType *dptr_in, Complex<RealType> *dptr_out) {
       #pragma omp parallel
-      nb_threads = omp_get_num_threads();
+      {
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
+        Complex<RealType> *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
+        Complex<RealType> *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
 
-      std::cout << "nb_threads = " << nb_threads << std::endl;
+        // Fourier Transform in x direction
+        #pragma omp for schedule(static)
+        for(int ix2=0; ix2 < nx2_; ix2++) {
+          for(int ix1=0; ix1 < nx1_; ix1++) {
+            int idx = Index::coord_2D2int(ix1, ix2, nx1_, nx2_);
+            thread_private_buffer_nx1[ix1] = dptr_in[idx];
+          }
+          rfft(thread_private_buffer_nx1, thread_private_buffer_nx1h);
 
-      d_buffer_c_                       = ComplexView3D("buffer_3d", nb_batches_, nx1h_, nx2_);
-      d_thread_private_buffers_nx1h_    = ComplexView2D("buffer_1d_nx1", nb_threads, nx1h_);
-      d_thread_private_buffers_nx2_     = ComplexView2D("buffer_1d_nx2", nb_threads, nx2_);
-      d_thread_private_buffers_nx2_out_ = ComplexView2D("buffer_1d_nx2", nb_threads, nx2_);
-      d_buffers_nx1_r2c_                = RealView2D("buffer_1d_nx1_r2c", nb_threads, nx1_);
-      d_buffers_nx1_c2r_                = RealView2D("buffer_1d_nx1_c2r", nb_threads, nx1_+2);
+          // Transpose (nx1h, nx2) -> (nx2, nx1h)
+          for(int ix1=0; ix1 < nx1h_; ix1++) {
+            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1h_);
+            buffer_c_[idx] = thread_private_buffer_nx1h[ix1];
+          }
+        }
+            
+        // Fourier Transform in y direction
+        #pragma omp for schedule(static)
+        for(int ix1=0; ix1 < nx1h_; ix1++) {
+          int offset = nx2_ * ix1;
+          fft(&buffer_c_[offset], thread_private_buffer_nx2);
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int idx = Index::coord_2D2int(ix1, ix2, nx1h_, nx2_);
+            dptr_out[idx] = thread_private_buffer_nx2[ix2];
+          }
+        }
+      }
+    }
 
-      dptr_buffer_c_                  = d_buffer_c_.data();
-      thread_private_buffers_nx1h_    = d_thread_private_buffers_nx1h_.data();
-      thread_private_buffers_nx2_     = d_thread_private_buffers_nx2_.data();
-      thread_private_buffers_nx2_out_ = d_thread_private_buffers_nx2_out_.data();
-      thread_private_buffers_nx1_r2c_ = d_buffers_nx1_r2c_.data();
-      thread_private_buffers_nx1_c2r_ = d_buffers_nx1_c2r_.data();
+    /* @brief 2D FFT wrapper for batched case (LayoutLeft)
+     * @param[in]  dptr_in(nx1,nx2,batch)
+     * @param[out] dptr_out(nx1h,nx2,batch)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutLeft>::value, void>::type
+    rfft2_batch_(RealType *dptr_in, Complex<RealType> *dptr_out) {
+      #pragma omp parallel
+      {
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
+        Complex<RealType> *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
+        Complex<RealType> *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
+        // Fourier Transform in x direction
+        #pragma omp for schedule(static), collapse(2)
+        for(int ib=0; ib<nb_batches_; ib++) {
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            for(int ix1=0; ix1 < nx1_; ix1++) {
+              int idx = Index::coord_3D2int(ix1, ix2, ib, nx1_, nx2_, nb_batches_);
+              thread_private_buffer_nx1[ix1] = dptr_in[idx];
+            }
+
+            rfft(thread_private_buffer_nx1, thread_private_buffer_nx1h);
+
+            // Transpose (nx1h, nx2, batch) -> (nx2, nx1h, batch)
+            for(int ix1=0; ix1 < nx1h_; ix1++) {
+              int idx = Index::coord_3D2int(ix2, ix1, ib, nx2_, nx1h_, nb_batches_);
+              buffer_c_[idx] = thread_private_buffer_nx1h[ix1];
+            }
+          }
+        }
+
+        // Fourier Transform in y direction
+        for(int ib=0; ib<nb_batches_; ib++) {
+          for(int ix1=0; ix1 < nx1h_; ix1++) {
+            int offset = nx2_ * Index::coord_2D2int(ix1, ib, nx1h_, nb_batches_);
+            fft(&buffer_c_[offset], thread_private_buffer_nx2);
+            for(int ix2=0; ix2 < nx2_; ix2++) {
+              int idx = Index::coord_3D2int(ix1, ix2, ib, nx1h_, nx2_, nb_batches_);
+              dptr_out[idx] = thread_private_buffer_nx2[ix2];
+            }
+          }
+        }
+      }
+    }
+
+    /* @brief 2D FFT wrapper for serial case (LayoutLeft)
+     * @param[in]  dptr_in(nx1h,nx2)
+     * @param[out] dptr_out(nx1,nx2)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutLeft>::value, void>::type
+    irfft2_serial_(Complex<RealType> *dptr_in, RealType *dptr_out) {
+      #pragma omp parallel
+      {
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1 = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
+        Complex<RealType> *thread_private_buffer_nx2 = &thread_private_buffers_nx2_[nx2_*tid];
+        Complex<RealType> *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
+        // Inverse Fourier Transform in y direction
+        #pragma omp for schedule(static)
+        for(int ix1=0; ix1 < nx1h_; ix1++) {
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int idx = Index::coord_2D2int(ix1, ix2, nx1h_,nx2_);
+            thread_private_buffer_nx2[ix2] = dptr_in[idx];
+          }
+          ifft(thread_private_buffer_nx2, thread_private_buffer_nx2_out);
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int idx = Index::coord_2D2int(ix1, ix2, nx1h_, nx2_);
+            buffer_c_[idx] = thread_private_buffer_nx2_out[ix2];
+          }
+        }
+
+        // Inverse Fourier Transform in x direction
+        #pragma omp for schedule(static)
+        for(int ix2=0; ix2 < nx2_; ix2++) {
+          int offset_in  = nx1h_ * ix2;
+        
+          irfft(&buffer_c_[offset_in], thread_private_buffer_nx1);
+          for(int ix1=0; ix1 < nx1_; ix1++) {
+            int idx = Index::coord_2D2int(ix1, ix2, nx1_, nx2_);
+            dptr_out[idx] = thread_private_buffer_nx1[ix1];
+          }
+        }
+      }
+    }
+
+    /* @brief 2D FFT wrapper for batched case
+     * @param[in]  dptr_in(nx1h,nx2,batch)
+     * @param[out] dptr_out(nx1,nx2,batch)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutLeft>::value, void>::type
+    irfft2_batch_(Complex<RealType> *dptr_in, RealType *dptr_out) {
+      #pragma omp parallel
+      {
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1     = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
+        Complex<RealType> *thread_private_buffer_nx2     = &thread_private_buffers_nx2_[nx2_*tid];
+        Complex<RealType> *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
+        // Inverse Fourier Transform in y direction
+        #pragma omp for schedule(static), collapse(2)
+        for(int ib=0; ib < nb_batches_; ib++) {
+          for(int ix1=0; ix1 < nx1h_; ix1++) {
+            for(int ix2=0; ix2 < nx2_; ix2++) {
+              int idx = Index::coord_3D2int(ix1, ix2, ib, nx1h_, nx2_, nb_batches_);
+              thread_private_buffer_nx2[ix2] = dptr_in[idx];
+            }
+            ifft(thread_private_buffer_nx2, thread_private_buffer_nx2_out);
+            for(int ix2=0; ix2 < nx2_; ix2++) {
+              int idx = Index::coord_3D2int(ix1, ix2, ib, nx1h_, nx2_, nb_batches_);
+              buffer_c_[idx] = thread_private_buffer_nx2_out[ix2];
+            }
+          }
+        }
+
+        // Inverse Fourier Transform in x direction
+        #pragma omp for schedule(static), collapse(2)
+        for(int ib=0; ib < nb_batches_; ib++) {
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int offset  = nx1h_ * Index::coord_2D2int(ix2, ib, nx2_, nb_batches_);
+            irfft(&buffer_c_[offset], thread_private_buffer_nx1);
+            for(int ix1=0; ix1 < nx1_; ix1++) {
+              int idx = Index::coord_3D2int(ix1, ix2, ib, nx1_, nx2_, nb_batches_);
+              dptr_out[idx] = thread_private_buffer_nx1[ix1];
+            }
+          }
+        }
+      }
+    }
+
+    private:
+    // Layout Right specialization
+    /* @brief 2D FFT wrapper for serial case (LayoutRight)
+     * @param[in]  dptr_in(nx1,nx2)
+     * @param[out] dptr_out(nx1h,nx2)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutRight>::value, void>::type
+    rfft2_serial_(RealType *dptr_in, Complex<RealType> *dptr_out) {
+      #pragma omp parallel
+      { 
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
+        Complex<RealType> *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
+        Complex<RealType> *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
+
+        // Fourier Transform in x direction
+        #pragma omp for schedule(static)
+        for(int ix2=0; ix2 < nx2_; ix2++) {
+          for(int ix1=0; ix1 < nx1_; ix1++) {
+            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1_);
+            thread_private_buffer_nx1[ix1] = dptr_in[idx];
+          }
+          rfft(thread_private_buffer_nx1, thread_private_buffer_nx1h);
+
+          for(int ix1=0; ix1 < nx1h_; ix1++) {
+            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1h_);
+            buffer_c_[idx] = thread_private_buffer_nx1h[ix1];
+          }
+        }
+
+        // Fourier Transform in y direction
+        #pragma omp for schedule(static)
+        for(int ix1=0; ix1 < nx1h_; ix1++) {
+          int offset = nx2_ * ix1;
+          fft(&buffer_c_[offset], thread_private_buffer_nx2);
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1h_);
+            dptr_out[idx] = thread_private_buffer_nx2[ix2];
+          }
+        }
+      }
+    }
+
+    /* @brief 2D FFT wrapper for batched case
+     * @param[in]  dptr_in(nx1,nx2,batch)
+     * @param[out] dptr_out(nx1h,nx2,batch)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutRight>::value, void>::type
+    rfft2_batch_(RealType *dptr_in, Complex<RealType> *dptr_out) {
+      #pragma omp parallel
+      {
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1  = &thread_private_buffers_nx1_r2c_[nx1_*tid];
+        Complex<RealType> *thread_private_buffer_nx1h = &thread_private_buffers_nx1h_[nx1h_*tid];
+        Complex<RealType> *thread_private_buffer_nx2  = &thread_private_buffers_nx2_[nx2_*tid];
+        // Fourier Transform in x direction
+        #pragma omp for schedule(static), collapse(2)
+        for(int ib=0; ib<nb_batches_; ib++) {
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            for(int ix1=0; ix1 < nx1_; ix1++) {
+              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1_);
+              thread_private_buffer_nx1[ix1] = dptr_in[idx];
+            }
+
+            rfft(thread_private_buffer_nx1, thread_private_buffer_nx1h);
+
+            for(int ix1=0; ix1 < nx1h_; ix1++) {
+              int idx = Index::coord_3D2int(ix2, ix1, ib, nx2_, nx1h_, nb_batches_);
+              buffer_c_[idx] = thread_private_buffer_nx1h[ix1];
+            }
+          }
+        }
+
+        // Fourier Transform in y direction
+        #pragma omp for schedule(static), collapse(2)
+        for(int ib=0; ib<nb_batches_; ib++) {
+          for(int ix1=0; ix1 < nx1h_; ix1++) {
+            int offset = nx2_ * Index::coord_2D2int(ix1, ib, nx1h_, nb_batches_);
+            fft(&buffer_c_[offset], thread_private_buffer_nx2);
+            for(int ix2=0; ix2 < nx2_; ix2++) {
+              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1h_);
+              dptr_out[idx] = thread_private_buffer_nx2[ix2];
+            }
+          }
+        }
+      }
+    }
+
+    /* @brief 2D FFT wrapper for serial case
+     * @param[in]  dptr_in(nx1h,nx2)
+     * @param[out] dptr_out(nx1,nx2)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutRight>::value, void>::type
+    irfft2_serial_(Complex<RealType> *dptr_in, RealType *dptr_out) {
+      #pragma omp parallel
+      {
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1 = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
+        Complex<RealType> *thread_private_buffer_nx2 = &thread_private_buffers_nx2_[nx2_*tid];
+        Complex<RealType> *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
+        // Inverse Fourier Transform in y direction
+        #pragma omp for schedule(static)
+        for(int ix1=0; ix1 < nx1h_; ix1++) {
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1h_);
+            thread_private_buffer_nx2[ix2] = dptr_in[idx];
+          }
+          ifft(thread_private_buffer_nx2, thread_private_buffer_nx2_out);
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int idx = Index::coord_2D2int(ix1, ix2, nx1h_, nx2_);
+            buffer_c_[idx] = thread_private_buffer_nx2_out[ix2];
+          }
+        }
+
+        // Inverse Fourier Transform in x direction
+        #pragma omp for schedule(static)
+        for(int ix2=0; ix2 < nx2_; ix2++) {
+          int offset_in  = nx1h_ * ix2;
+
+          irfft(&buffer_c_[offset_in], thread_private_buffer_nx1);
+          for(int ix1=0; ix1 < nx1_; ix1++) {
+            int idx = Index::coord_2D2int(ix2, ix1, nx2_, nx1_);
+            dptr_out[idx] = thread_private_buffer_nx1[ix1];
+          }
+        }
+      }
+    }
+
+    /* @brief 2D FFT wrapper for batched case (LayoutRight)
+     * @param[in]  dptr_in(nx1h,nx2,batch)
+     * @param[out] dptr_out(nx1,nx2,batch)
+     */
+    template <class Layout = ArrayLayout>
+    inline typename std::enable_if<std::is_same<Layout, Kokkos::LayoutRight>::value, void>::type
+    irfft2_batch_(Complex<RealType> *dptr_in, RealType *dptr_out) {
+      #pragma omp parallel
+      {
+        int tid = omp_get_thread_num();
+        RealType          *thread_private_buffer_nx1     = &thread_private_buffers_nx1_c2r_[(nx1_+2)*tid];
+        Complex<RealType> *thread_private_buffer_nx2     = &thread_private_buffers_nx2_[nx2_*tid];
+        Complex<RealType> *thread_private_buffer_nx2_out = &thread_private_buffers_nx2_out_[nx2_*tid];
+        // Inverse Fourier Transform in y direction
+        #pragma omp for schedule(static), collapse(2)
+        for(int ib=0; ib < nb_batches_; ib++) {
+          for(int ix1=0; ix1 < nx1h_; ix1++) {
+            for(int ix2=0; ix2 < nx2_; ix2++) {
+              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1h_);
+              thread_private_buffer_nx2[ix2] = dptr_in[idx];
+            }
+            ifft(thread_private_buffer_nx2, thread_private_buffer_nx2_out);
+            for(int ix2=0; ix2 < nx2_; ix2++) {
+              int idx = Index::coord_3D2int(ix1, ix2, ib, nx1h_, nx2_, nb_batches_);
+              buffer_c_[idx] = thread_private_buffer_nx2_out[ix2];
+            }
+          }
+        }
+
+        // Inverse Fourier Transform in x direction
+        #pragma omp for schedule(static), collapse(2)
+        for(int ib=0; ib < nb_batches_; ib++) {
+          for(int ix2=0; ix2 < nx2_; ix2++) {
+            int offset  = nx1h_ * Index::coord_2D2int(ix2, ib, nx2_, nb_batches_);
+
+            irfft(&buffer_c_[offset], thread_private_buffer_nx1);
+            for(int ix1=0; ix1 < nx1_; ix1++) {
+              int idx = Index::coord_3D2int(ib, ix2, ix1, nb_batches_, nx2_, nx1_);
+              dptr_out[idx] = thread_private_buffer_nx1[ix1];
+            }
+          }
+        }
+      }
+    }
+
+    private:
+    // 1D FFT wrappers for FFTW (double precision)
+    inline void fft_(Complex<double> *dptr_in, Complex<double> *dptr_out) {
+      fftw_complex *in  = reinterpret_cast<fftw_complex*>(dptr_in);
+      fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
+      fftw_execute_dft(forward_c2c_plan_, in, out);
+    }
+
+    inline void rfft_(double *dptr_in, Complex<double> *dptr_out) {
+      fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
+      fftw_execute_dft_r2c(forward_r2c_plan_, dptr_in, out);
+    }
+
+    inline void ifft_(Complex<double> *dptr_in, Complex<double> *dptr_out) {
+      fftw_complex *in  = reinterpret_cast<fftw_complex*>(dptr_in);
+      fftw_complex *out = reinterpret_cast<fftw_complex*>(dptr_out);
+      fftw_execute_dft(backward_c2c_plan_, in, out);
+    }
+
+    inline void irfft_(Complex<double> *dptr_in, double *dptr_out) {
+      fftw_complex *in = reinterpret_cast<fftw_complex*>(dptr_in);
+      fftw_execute_dft_c2r(backward_c2r_plan_, in, dptr_out);
+    }
+
+    // FFTW interfaces for single precision
+    inline void fft_(Complex<float> *dptr_in, Complex<float> *dptr_out) {
+      fftwf_complex *in  = reinterpret_cast<fftwf_complex*>(dptr_in);
+      fftwf_complex *out = reinterpret_cast<fftwf_complex*>(dptr_out);
+      fftwf_execute_dft(forward_c2c_plan_, in, out);
+    }
+    
+    inline void rfft_(float *dptr_in, Complex<float> *dptr_out) {
+      fftwf_complex *out = reinterpret_cast<fftwf_complex*>(dptr_out);
+      fftwf_execute_dft_r2c(forward_r2c_plan_, dptr_in, out);
+    }
+    
+    inline void ifft_(Complex<float> *dptr_in, Complex<float> *dptr_out) {
+      fftwf_complex *in  = reinterpret_cast<fftwf_complex*>(dptr_in);
+      fftwf_complex *out = reinterpret_cast<fftwf_complex*>(dptr_out);
+      fftwf_execute_dft(backward_c2c_plan_, in, out);
+    }
+                                                                                  
+    inline void irfft_(Complex<float> *dptr_in, float *dptr_out) {
+      fftwf_complex *in = reinterpret_cast<fftwf_complex*>(dptr_in);
+      fftwf_execute_dft_c2r(backward_c2r_plan_, in, dptr_out);
     }
   };
 };

@@ -35,12 +35,15 @@ public:
 };
 
 enum TimerEnum : int {Total,
-                      Halo_fill_A,
-                      Halo_fill_B,
-                      Halo_comm,
+                      MainLoop,
+                      packing,
+                      comm,
+                      unpacking,
                       Advec2D,
                       Advec4D,
                       Field,
+                      AllReduce,
+                      Fourier,
                       Diag,
                       Splinecoeff_xy,
                       Splinecoeff_vxvy,
@@ -49,17 +52,19 @@ enum TimerEnum : int {Total,
 static void defineTimers(std::vector<Timer*> &timers) {
   // Set timers
   timers.resize(Nb_timers);
-  timers[Total]            = new Timer("total");
-  timers[Halo_fill_A]      = new Timer("halo_fill_A");
-  timers[Halo_fill_B]      = new Timer("halo_fill_B");
-  timers[Halo_comm]        = new Timer("halo_comm");
-  timers[Advec2D]          = new Timer("advec2D");
-  timers[Advec4D]          = new Timer("advec4D");
-  timers[Field]            = new Timer("field");
-  timers[Diag]             = new Timer("diag");
-  timers[Splinecoeff_xy]   = new Timer("splinecoeff_xy");
-  timers[Splinecoeff_vxvy] = new Timer("splinecoeff_vxvy");
-  timers[Nb_timers]        = new Timer("nb_timers");
+  timers[Total]                       = new Timer("total");
+  timers[MainLoop]                    = new Timer("MainLoop");
+  timers[TimerEnum::packing]          = new Timer("pack");
+  timers[TimerEnum::comm]             = new Timer("comm");
+  timers[TimerEnum::unpacking]        = new Timer("unpack");
+  timers[TimerEnum::Advec2D]          = new Timer("advec2D");
+  timers[TimerEnum::Advec4D]          = new Timer("advec4D");
+  timers[TimerEnum::Field]            = new Timer("field");
+  timers[TimerEnum::AllReduce]        = new Timer("all_reduce");
+  timers[TimerEnum::Fourier]          = new Timer("Fourier");
+  timers[TimerEnum::Diag]             = new Timer("diag");
+  timers[TimerEnum::Splinecoeff_xy]   = new Timer("splinecoeff_xy");
+  timers[TimerEnum::Splinecoeff_vxvy] = new Timer("splinecoeff_vxvy");
 }
 
 static void printTimers(std::vector<Timer*> &timers) {
