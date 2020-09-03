@@ -66,6 +66,7 @@ int main (int argc, char* argv[]) {
 
     timers[Field]->begin();
     field_rho(&conf, comm, fn, ef);
+    field_reduce(&conf, ef);
     field_poisson(&conf, ef, dg, iter);
     dg->computeL2norm(&conf, fn, iter);
     Kokkos::fence();

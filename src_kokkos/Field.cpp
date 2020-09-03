@@ -27,7 +27,6 @@ void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef)
                                          );
 
   Kokkos::parallel_for("initialization", initialization_policy2d, KOKKOS_LAMBDA (const int ix, const int iy) {
-    rho(ix, iy)     = 0.;
     rho_loc(ix, iy) = 0.;
     ex(ix, iy)      = 0.;
     ey(ix, iy)      = 0.;
@@ -60,11 +59,19 @@ void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef)
     // stored in the global address
     rho_loc(ix, iy) = sum * dvx * dvy;
   });
-
-  // reduction in velocity space
-  int nelems = nx * ny;
-  MPI_Allreduce(rho_loc.data(), rho.data(), nelems, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 };
+
+void field_reduce(Config *conf, Efield *ef) {
+  // reduction in velocity space
+  const Domain *dom = &(conf->dom_);
+  int nx = dom->nxmax_[0], ny = dom->nxmax_[1];
+  int nelems = nx * ny;
+   
+  // Shallow copy
+  RealView2D rho     = ef->rho_;
+  RealView2D rho_loc = ef->rho_loc_;
+  MPI_Allreduce(rho_loc.data(), rho.data(), nelems, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+}
 
 void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter)
 {

@@ -34,6 +34,7 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
 
   timers[Field]->begin();
   field_rho(conf, comm, fn, ef); // [May be done]
+  field_reduce(conf, ef);
   field_poisson(conf, ef, dg, iter);
   Kokkos::fence();
   timers[Field]->end();
@@ -50,6 +51,7 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
 
   timers[Field]->begin();
   field_rho(conf, comm, fnp1, ef); // [May be done]
+  field_reduce(conf, ef);
   field_poisson(conf, ef, dg, iter);
   Kokkos::fence();
   timers[Field]->end();
