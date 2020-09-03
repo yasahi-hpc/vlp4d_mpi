@@ -23,7 +23,7 @@
 #include "Config.hpp"
 #include "Init.hpp"
 #include "Parser.hpp"
-#include "communication.hpp"
+#include "Communication.hpp"
 #include "Efield.hpp"
 #include "Diags.hpp"
 #include "Field.hpp"

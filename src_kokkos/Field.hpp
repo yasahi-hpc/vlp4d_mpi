@@ -5,7 +5,7 @@
 #include "Efield.hpp"
 #include "Diags.hpp"
 #include "Types.hpp"
-#include "communication.hpp"
+#include "Communication.hpp"
 
 void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef);
 void field_reduce(Config *conf, Efield *ef);

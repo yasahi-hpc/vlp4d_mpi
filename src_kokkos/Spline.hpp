@@ -3,7 +3,7 @@
 
 #include "Config.hpp"
 #include "Types.hpp"
-#include "communication.hpp"
+#include "Communication.hpp"
 #include "tiles.h"
 #include "Transpose.hpp"
 

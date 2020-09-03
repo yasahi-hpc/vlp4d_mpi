@@ -5,7 +5,7 @@
 #include "Diags.hpp"
 #include "Types.hpp"
 #include "Math.hpp"
-#include "communication.hpp"
+#include "Communication.hpp"
 #include "Advection.hpp"
 #include "Timer.hpp"
 #include "Spline.hpp"

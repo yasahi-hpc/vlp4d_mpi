@@ -1,14 +1,14 @@
 #ifndef __ADVECTION_HPP__
 #define __ADVECTION_HPP__
 
+#include <cmath>
+#include <Kokkos_ScatterView.hpp>
 #include "Config.hpp"
 #include "Types.hpp"
 #include "Efield.hpp"
 #include "Math.hpp"
 #include "tiles.h"
-#include <cmath>
-#include <Kokkos_ScatterView.hpp>
-#include "communication.hpp"
+#include "Communication.hpp"
 
 // Temporarly solution
 #if ! defined( KOKKOS_ENABLE_CUDA )

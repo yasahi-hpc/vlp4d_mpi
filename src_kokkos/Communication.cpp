@@ -1,6 +1,5 @@
-#include "communication.hpp"
+#include "Communication.hpp"
 #include "tiles.h"
-//#include "helper.hpp"
 #include <cmath>
 #include <cassert>
 #include <algorithm>
@@ -438,6 +437,32 @@ void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
   }
 }
 
+void Distrib::boundary_condition_(RealOffsetView4D &halo_fn, Halos *send_buffers) {
+  int orcsum = 0;
+  const int total_size0 = send_buffers->total_size_orc_.at(orcsum);
+  if(total_size0 > 0) {
+    Kokkos::parallel_for("bc0", total_size0, boundary_condition_orc0(halo_fn, send_buffers));
+  }
+
+  orcsum = 1;
+  const int total_size1 = send_buffers->total_size_orc_.at(orcsum);
+  if(total_size1 > 0) {
+    Kokkos::parallel_for("bc1", total_size1, boundary_condition_orc1(halo_fn, send_buffers));
+  }
+
+  orcsum = 2;
+  const int total_size2 = send_buffers->total_size_orc_.at(orcsum);
+  if(total_size2 > 0) {
+    Kokkos::parallel_for("bc2", total_size2, boundary_condition_orc2(halo_fn, send_buffers));
+  }
+
+  orcsum = 3;
+  const int total_size3 = send_buffers->total_size_orc_.at(orcsum);
+  if(total_size3 > 0) {
+    Kokkos::parallel_for("bc3", total_size3, boundary_condition_orc3(halo_fn, send_buffers));
+  }
+}
+
 /*
   @biref Copy values of distribution function in to the halo regions (within slist) that will be sent.
          called in exchangeHalo function
@@ -448,6 +473,7 @@ void Distrib::Irecv(int &creq, std::vector<MPI_Request> &req) {
  */
 void Distrib::packAndBoundary(Config *conf, RealOffsetView4D halo_fn) {
   if(spline_) {
+    /* Older version
     const int nx_send  = send_buffers_->nhalo_max_[0];
     const int ny_send  = send_buffers_->nhalo_max_[1];
     const int nvx_send = send_buffers_->nhalo_max_[2];
@@ -467,6 +493,11 @@ void Distrib::packAndBoundary(Config *conf, RealOffsetView4D halo_fn) {
       Kokkos::parallel_for("boundary_condition", nb_send_halos, boundary_condition(conf, halo_fn, send_buffers_));
     #endif
     Kokkos::parallel_for("merged_pack", total_size, merged_pack(send_buffers_));
+    */
+
+    const int total_size = send_buffers_->total_size_;
+    Kokkos::parallel_for("pack", total_size, pack_(halo_fn, send_buffers_));
+    boundary_condition_(halo_fn, send_buffers_);
   }
 }
 

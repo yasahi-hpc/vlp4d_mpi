@@ -4,7 +4,7 @@
 #include "Types.hpp"
 #include "Config.hpp"
 #include "Efield.hpp"
-#include "communication.hpp"
+#include "Communication.hpp"
 
 struct Diags {
 private:
