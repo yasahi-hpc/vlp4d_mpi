@@ -5,6 +5,7 @@
 #include "types.h"
 #include "efield.hpp"
 #include "Math.hpp"
+#include "tiles.h"
 #include <cmath>
 #include <Kokkos_ScatterView.hpp>
 #include "communication.hpp"

@@ -2,10 +2,18 @@
 #define __CUDA_TRANSPOSE_HPP__
 
 #include <cublas_v2.h>
-#include "types.h"
+#include <Kokkos_Core.hpp>
+#include <Kokkos_Complex.hpp>
+
+template <typename RealType> using Complex = std::complex<RealType>;
 
 namespace Impl {
-  template < typename ScalarType >
+  template <typename RealType, class ArrayLayout = Kokkos::LayoutLeft,
+            typename std::enable_if<std::is_same<ScalarType, float           >::value ||
+                                    std::is_same<ScalarType, double          >::value ||
+                                    std::is_same<ScalarType, Complex<float>  >::value ||
+                                    std::is_same<ScalarType, Complex<double> >::value
+                                   >::type * = nullptr>
   struct Transpose {
     private:
       int col_;
@@ -13,57 +21,38 @@ namespace Impl {
       cublasHandle_t handle_;
 
     public:
+      using array_layout = ArrayLayout;
 
+    public:
+      Transpose() = delete;
       Transpose(int row, int col) : row_(row), col_(col) {
+        // default initialization assumes LayoutLeft
+        if(std::is_same<array_layout, Kokkos::LayoutRight>::value) {
+          row_ = col;
+          col_ = row;
+        }
         cublasCreate(&handle_);
       }
 
-      virtual ~Transpose() {
+      ~Transpose() {
         cublasDestroy(handle_);
       }
 
-      /*
-      // In-place transpose
-      void forward(ScalarType *dptr_inout,
-                   typename std::enable_if<std::is_same<ScalarType, float32>::value   ||
-                                           std::is_same<ScalarType, float64>::value   ||
-                                           std::is_same<ScalarType, complex32>::value ||
-                                           std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
-        cublasTranspose_(dptr_inout, dptr_inout, row_, col_);
-      }
-
-      void backward(ScalarType *dptr_inout,
-                   typename std::enable_if<std::is_same<ScalarType, float32>::value   ||
-                                           std::is_same<ScalarType, float64>::value   ||
-                                           std::is_same<ScalarType, complex32>::value ||
-                                           std::is_same<ScalarType, complex64>::value >::type * = nullptr) {
-        cublasTranspose_(dptr_inout, dptr_inout, col_, row_);
-      }
-      */
-
       // Out-place transpose
-      void forward(ScalarType *dptr_in, ScalarType *dptr_out,
-                   typename std::enable_if<std::is_same<ScalarType, float32>::value   ||
-                                           std::is_same<ScalarType, float64>::value   ||
-                                           std::is_same<ScalarType, complex64>::value ||
-                                           std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
+      void forward(RealType *dptr_in, RealType *dptr_out) {
         cublasTranspose_(dptr_in, dptr_out, row_, col_);
       }
 
-      void backward(ScalarType *dptr_in, ScalarType *dptr_out,
-                    typename std::enable_if<std::is_same<ScalarType, float32>::value   ||
-                                            std::is_same<ScalarType, float64>::value   ||
-                                            std::is_same<ScalarType, complex64>::value ||
-                                            std::is_same<ScalarType, complex128>::value >::type * = nullptr) {
+      void backward(RealType *dptr_in, RealType *dptr_out) {
         cublasTranspose_(dptr_in, dptr_out, col_, row_);
       }
 
     private:
 
       // Float32 specialization
-      void cublasTranspose_(float32 *dptr_in, float32 *dptr_out, int row, int col) {
-        const float32 alpha = 1.0;
-        const float32 beta  = 0.0;
+      void cublasTranspose_(float *dptr_in, float *dptr_out, int row, int col) {
+        const float alpha = 1.0;
+        const float beta  = 0.0;
         cublasSgeam(handle_,     // handle
                     CUBLAS_OP_T, // transa
                     CUBLAS_OP_T, // transb
@@ -80,9 +69,9 @@ namespace Impl {
       }
 
       // Float64 specialization
-      void cublasTranspose_(float64 *dptr_in, float64 *dptr_out, int row, int col) {
-        const float64 alpha = 1.;
-        const float64 beta  = 0.;
+      void cublasTranspose_(double *dptr_in, double *dptr_out, int row, int col) {
+        const double alpha = 1.;
+        const double beta  = 0.;
         cublasDgeam(handle_,     // handle
                     CUBLAS_OP_T, // transa
                     CUBLAS_OP_T, // transb
@@ -99,7 +88,7 @@ namespace Impl {
       }
 
       // complex64 specialization
-      void cublasTranspose_(complex64 *dptr_in, complex64 *dptr_out, int row, int col) {
+      void cublasTranspose_(Complex<float> *dptr_in, Complex<float> *dptr_out, int row, int col) {
         const cuComplex alpha = make_cuComplex(1.0, 0.0);
         const cuComplex beta  = make_cuComplex(0.0, 0.0);
         cublasCgeam(handle_,     // handle
@@ -117,8 +106,8 @@ namespace Impl {
                     col);        // ldc; leading dimension of two-dimensional array used to store C
       }
 
-      // complex64 specialization
-      void cublasTranspose_(complex128 *dptr_in, complex128 *dptr_out, int row, int col) {
+      // complex128 specialization
+      void cublasTranspose_(Complex<double> *dptr_in, Complex<double> *dptr_out, int row, int col) {
         const cuDoubleComplex alpha = make_cuDoubleComplex(1., 0.);
         const cuDoubleComplex beta  = make_cuDoubleComplex(0., 0.);
         cublasZgeam(handle_,     // handle

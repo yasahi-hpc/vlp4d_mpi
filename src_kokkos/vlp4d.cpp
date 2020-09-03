@@ -29,7 +29,7 @@
 #include "diags.hpp"
 #include "Field.hpp"
 #include "Math.hpp"
-#include "spline.hpp"
+//#include "spline.hpp"
 #include "timestep.hpp"
 #include "Timer.hpp"
 
