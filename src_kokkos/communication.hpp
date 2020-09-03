@@ -7,7 +7,7 @@
 #include <cassert>
 #include "types.h"
 #include "config.h"
-#include "index.h"
+#include "Index.hpp"
 #include "utils.hpp"
 #include "Timer.hpp"
 
@@ -45,6 +45,7 @@ struct Halo{
 // In Kokkos, we manage all the halos in a single data structure
 struct Halos{
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
+  typedef Kokkos::View<int*[DIMENSION][DIMENSION], execution_space> RangeView3D;
   RealView2D buf_;
   RealView1D buf_flatten_;
   RangeView2D xmin_;

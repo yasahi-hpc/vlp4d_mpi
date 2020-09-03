@@ -8,7 +8,7 @@
 #include <sstream>
 #include <fstream>
 #include "types.h"
-#include "index.h"
+#include "Index.hpp"
 
 /*
 template <class ViewType>

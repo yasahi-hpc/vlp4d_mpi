@@ -8,7 +8,7 @@
 #include "communication.hpp"
 #include "Advection.hpp"
 #include "Timer.hpp"
-#include "helper.hpp"
+//#include "helper.hpp"
 
 void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter);
 

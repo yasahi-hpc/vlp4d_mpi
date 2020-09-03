@@ -1,6 +1,6 @@
 #include "Field.hpp"
-#include "index.h"
-#include "helper.hpp"
+//#include "index.h"
+//#include "helper.hpp"
 #include "tiles.h"
 
 void lu_solve_poisson(Config *conf, Efield *ef, Diags *dg, int iter);

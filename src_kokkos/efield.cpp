@@ -16,8 +16,8 @@ Efield::Efield(Config *conf, shape_t<2> dim)
   float64 xmax = dom->maxPhy_[0];
   float64 kx0 = 2 * M_PI / xmax;
 
-  fft_ = new Impl::FFT(nx, ny, 1);
-  int nx1h = fft_->nx1h_;
+  fft_ = new Impl::FFT<float64, array_layout>(nx, ny, 1);
+  int nx1h = fft_->nx1h();
   rho_hat_ = ComplexView2D("rho_hat", nx1h, ny);
   ex_hat_  = ComplexView2D("ex_hat",  nx1h, ny);
   ey_hat_  = ComplexView2D("ey_hat",  nx1h, ny);
@@ -42,15 +42,15 @@ Efield::~Efield() {
 void Efield::solve_poisson_fftw(float64 xmax, float64 ymax) {
   float64 kx0 = 2 * M_PI / xmax;
   float64 ky0 = 2 * M_PI / ymax;
-  int nx1  = fft_->nx1_;
-  int nx1h = fft_->nx1h_;
-  int nx2  = fft_->nx2_;
-  int nx2h = fft_->nx2h_;
-  float64 normcoeff = 1. / (nx1 * nx2);
-  const complex64 I = complex64(0., 1.);
+  int nx1  = fft_->nx1();
+  int nx1h = fft_->nx1h();
+  int nx2  = fft_->nx2();
+  int nx2h = fft_->nx2h();
+  float64 normcoeff = fft_->normcoeff();
+  const complex128 I = complex128(0., 1.);
   
   // Forward 2D FFT (Real to Complex)
-  fft_->fft2(rho_.data(), rho_hat_.data());
+  fft_->rfft2(rho_.data(), rho_hat_.data());
 
   // Solve Poisson equation in Fourier space
   ComplexView2D ex_hat  = ex_hat_;
@@ -91,7 +91,7 @@ void Efield::solve_poisson_fftw(float64 xmax, float64 ymax) {
   });
 
   // Backward 2D FFT (Complex to Real)
-  fft_->ifft2(rho_hat.data(), rho_.data());
-  fft_->ifft2(ex_hat.data(),  ex_.data());
-  fft_->ifft2(ey_hat.data(),  ey_.data());
+  fft_->irfft2(rho_hat.data(), rho_.data());
+  fft_->irfft2(ex_hat.data(),  ex_.data());
+  fft_->irfft2(ey_hat.data(),  ey_.data());
 }

@@ -3,14 +3,10 @@
 
 #include "types.h"
 #include "config.h"
-
-#if defined( KOKKOS_ENABLE_CUDA )
-  #include "Cuda_FFT.hpp"
-#else
-  #include "OpenMP_FFT.hpp"
-#endif
+#include "FFT.hpp"
 
 struct Efield {
+  typedef typename RealView2D::array_layout array_layout;
   RealView2D rho_;
   RealView2D rho_loc_; // Before all reduce
   RealView2D ex_;
@@ -20,7 +16,7 @@ struct Efield {
   // Filter to avoid conditional to keep (0, 0) component 0
   RealView1D filter_;
 
-  Impl::FFT *fft_;
+  Impl::FFT<float64, array_layout> *fft_;
 
   // a 2D complex buffer of size nx1h * nx2 (renamed)
 private:

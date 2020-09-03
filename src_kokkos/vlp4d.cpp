@@ -19,7 +19,7 @@
 #include <Kokkos_Core.hpp>
 #include <impl/Kokkos_Timer.hpp>
 #include <cstdio>
-#include "helper.hpp"
+//#include "helper.hpp"
 #include "types.h"
 #include "config.h"
 #include "init.h"
