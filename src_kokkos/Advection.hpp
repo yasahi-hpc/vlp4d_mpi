@@ -208,6 +208,7 @@ namespace Advection {
       #endif
     }
 
+    // For 3D policy
     KOKKOS_INLINE_FUNCTION
     void operator()(const int ix, const int iy, const int ivx) const {
       const int nvy_min = local_start_[3];
@@ -232,6 +233,28 @@ namespace Advection {
         access_error(0) += interp_2D(tmp2d, xstar, ystar, ftmp);
         fn_(ix, iy, ivx, ivy) = ftmp;
       }
+    }
+
+    // For 4D policy
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int ix, const int iy, const int ivx, const int ivy) const {
+      const float64 vx = minPhy_[2] + ivx * dx_[2];
+      const float64 vy = minPhy_[3] + ivy * dx_[3];
+      const float64 depx = dt_ * vx;
+      const float64 depy = dt_ * vy;
+
+      auto tmp2d = Kokkos::Experimental::subview(fn_tmp_, Kokkos::ALL, Kokkos::ALL, ivx, ivy);
+
+      const float64 x = minPhy_[0] + ix * dx_[0];
+      const float64 y = minPhy_[1] + iy * dx_[1];
+
+      const float64 xstar = x - depx;
+      const float64 ystar = y - depy;
+      float64 ftmp = 0;
+
+      auto access_error = scatter_error_.access();
+      access_error(0) += interp_2D(tmp2d, xstar, ystar, ftmp);
+      fn_(ix, iy, ivx, ivy) = ftmp;
     }
   };
 
@@ -414,6 +437,7 @@ namespace Advection {
       #endif
     }
 
+    // 3D policy
     KOKKOS_INLINE_FUNCTION
     void operator()(const int ix, const int iy, const int ivx) const {
       const int nvy_min = local_start_[3];
@@ -431,6 +455,20 @@ namespace Advection {
         fn_(ix, iy, ivx, ivy) = interp_4D(fn_tmp_, xstar);
       }
     }
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int ix, const int iy, const int ivx, const int ivy) const {
+      auto access_error = scatter_error_.access();
+      float64 xstar[4];
+      int indices[4] = {ix, iy, ivx, ivy};
+      computeFeet(xstar, indices);
+
+      for(int j = 0; j < 4; j++) {
+        access_error(0) += (xstar[j] < locrxmindx_[j] || xstar[j] > locrxmaxdx_[j]);
+      }
+
+      fn_(ix, iy, ivx, ivy) = interp_4D(fn_tmp_, xstar);
+    }
   };
 
   void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt) {
@@ -444,15 +482,22 @@ namespace Advection {
                                                {nvx_min-HALO_PTS, nvx_max+HALO_PTS},
                                                {nvy_min-HALO_PTS, nvy_max+HALO_PTS});
     Impl::deep_copy(fn_tmp, fn);
+    View1D<int> error("error", 1);
+    auto scatter_error = Kokkos::Experimental::create_scatter_view(error);
+
+    /* 3D policy
     MDPolicyType_3D advect_2d_policy3d({{nx_min,   ny_min,   nvx_min}},
                                        {{nx_max+1, ny_max+1, nvx_max+1}},
                                        {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2}}
                                       );
-    
-    View1D<int> error("error", 1);
-    auto scatter_error = Kokkos::Experimental::create_scatter_view(error);
-
     Kokkos::parallel_for("advect_2d", advect_2d_policy3d, blocked_advect_2D_xy_functor(conf, fn, fn_tmp, dt, scatter_error));
+    */
+    MDPolicyType_4D advect_2d_policy4d({{nx_min,   ny_min,   nvx_min,   nvy_min}},
+                                       {{nx_max+1, ny_max+1, nvx_max+1, nvy_max+1}},
+                                       {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
+                                      );
+    Kokkos::parallel_for("advect_2d", advect_2d_policy4d, blocked_advect_2D_xy_functor(conf, fn, fn_tmp, dt, scatter_error));
+
     Kokkos::Experimental::contribute(error, scatter_error);
     testError(error);
   }
@@ -463,14 +508,25 @@ namespace Advection {
     int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
     Impl::deep_copy(tmp_fn, fn);
 
+    View1D<int> error("error", 1);
+    auto scatter_error = Kokkos::Experimental::create_scatter_view(error);
+
+    /* 3D policy
     MDPolicyType_3D advect_4d_policy3d({{nx_min, ny_min, nvx_min}},
                                        {{nx_max+1, ny_max+1, nvx_max+1}},
                                        {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2}}
                                       );
 
-    View1D<int> error("error", 1);
-    auto scatter_error = Kokkos::Experimental::create_scatter_view(error);
     Kokkos::parallel_for("advect_4d", advect_4d_policy3d, advect_4D_functor(conf, ef, fn, tmp_fn, dt, scatter_error));
+    */
+    MDPolicyType_4D advect_4d_policy4d({{nx_min,   ny_min,   nvx_min,   nvy_min}},
+                                       {{nx_max+1, ny_max+1, nvx_max+1, nvy_max+1}},
+                                       {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
+                                      );
+
+    Kokkos::parallel_for("advect_4d", advect_4d_policy4d, advect_4D_functor(conf, ef, fn, tmp_fn, dt, scatter_error));
+
+    Kokkos::Experimental::contribute(error, scatter_error);
     testError(error);
   }
 
