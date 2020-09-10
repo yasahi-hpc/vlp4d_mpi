@@ -327,14 +327,14 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealOffsetView4D halo_fn)
   }
 }
 
-void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers) {
+void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers, bool disable_print) {
   Domain* dom = &conf->dom_; 
 
   import(file, conf);
-  if(comm.master()) print(conf);
+  if(comm.master() && !disable_print) print(conf);
 
   // Initialize communication manager
-  comm.createDecomposition(conf);
+  comm.createDecomposition(conf, disable_print);
   Urbnode *mynode = comm.node();
 
   shape_t<DIMENSION> nxmin_halo;

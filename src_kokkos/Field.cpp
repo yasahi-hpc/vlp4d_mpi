@@ -5,8 +5,7 @@
 
 void lu_solve_poisson(Config *conf, Efield *ef, Diags *dg, int iter);
 
-void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef)
-{
+void field_rho(Config *conf, RealOffsetView4D fn, Efield *ef, const std::vector<int> &tiles) {
   const Domain *dom = &(conf->dom_);
 
   int nx = dom->nxmax_[0], ny = dom->nxmax_[1];
@@ -23,7 +22,7 @@ void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef)
 
   MDPolicyType_2D initialization_policy2d({{0, 0}},
                                           {{nx, ny}},
-                                          {{TILE_SIZE0, TILE_SIZE1}}
+                                          {{BASIC_TILE_SIZE0, BASIC_TILE_SIZE1}}
                                          );
 
   Kokkos::parallel_for("initialization", initialization_policy2d, KOKKOS_LAMBDA (const int ix, const int iy) {
@@ -43,9 +42,11 @@ void field_rho(Config *conf, Distrib &comm, RealOffsetView4D fn, Efield *ef)
   int local_vystart = dom->local_nxmin_[3];
   int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
   int nx_max = dom->local_nxmax_[0] + 1, ny_max = dom->local_nxmax_[1] + 1, nvx_max = dom->local_nxmax_[2] + 1, nvy_max = dom->local_nxmax_[3] + 1;
+
+  const int TX = tiles[0], TY = tiles[1];
   MDPolicyType_2D integral_policy2d({{nx_min, ny_min}},
                                     {{nx_max, ny_max}},
-                                    {{BASIC_TILE_SIZE0, BASIC_TILE_SIZE1}}
+                                    {{TX,     TY}}
                                    );
 
   Kokkos::parallel_for("integral", integral_policy2d, KOKKOS_LAMBDA (const int ix, const int iy) {

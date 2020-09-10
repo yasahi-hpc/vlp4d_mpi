@@ -9,8 +9,10 @@
 
 namespace Spline {
   // prototypes
-  void computeCoeff_xy(Config *conf, RealOffsetView4D fn);
-  void computeCoeff_vxvy(Config *conf, RealOffsetView4D fn);
+  void computeCoeff_xy(Config *conf, RealOffsetView4D fn, 
+                       const std::vector<int> &tiles={TILE_SIZE0, TILE_SIZE1});
+  void computeCoeff_vxvy(Config *conf, RealOffsetView4D fn, 
+                         const std::vector<int> &tiles={TILE_SIZE0, TILE_SIZE1});
 
   // Internal functions
   /* 
@@ -118,13 +120,14 @@ namespace Spline {
     }
   };
 
-  void computeCoeff_xy(Config *conf, RealOffsetView4D fn) {
+  void computeCoeff_xy(Config *conf, RealOffsetView4D fn, const std::vector<int> &tiles) {
     int nx  = fn.extent(0);
     int ny  = fn.extent(1);
     int nvx = fn.extent(2);
     int nvy = fn.extent(3);
     int nx_min = fn.begin(0), ny_min = fn.begin(1), nvx_min = fn.begin(2), nvy_min = fn.begin(3);
     int nx_max = fn.end(0), ny_max = fn.end(1), nvx_max = fn.end(2), nvy_max = fn.end(3);
+    const int TX = tiles[0], TY = tiles[1];
 
     typedef typename RealOffsetView4D::array_layout array_layout;
     Impl::Transpose<float64, array_layout> transpose(nx*ny, nvx*nvy); 
@@ -137,17 +140,18 @@ namespace Spline {
     transpose.forward(fn.data(), fn_trans.data());
     MDPolicyType_2D spline_xy_policy2d({{0,  0}},
                                        {{nvx, nvy}},
-                                       {{TILE_SIZE0, TILE_SIZE1}}
+                                       {{TX, TY}}
                                       );
     Kokkos::parallel_for("spline_coef_xy", spline_xy_policy2d, spline_coef_2d(conf, fn_trans));
     transpose.backward(fn_trans.data(), fn.data());
   }
 
-  void computeCoeff_vxvy(Config *conf, RealOffsetView4D fn) {
+  void computeCoeff_vxvy(Config *conf, RealOffsetView4D fn, const std::vector<int> &tiles) {
     int nx = fn.extent(0), ny = fn.extent(1);
+    const int TX = tiles[0], TY = tiles[1];
     MDPolicyType_2D spline_vxvy_policy2d({{0,  0}},
                                          {{nx, ny}},
-                                         {{TILE_SIZE0, TILE_SIZE1}}
+                                         {{TX, TY}}
                                         );
     Kokkos::parallel_for("spline_coef_vxvy", spline_vxvy_policy2d, spline_coef_2d(conf, fn));
   }
