@@ -699,7 +699,7 @@ public:
   std::vector<Urbnode> &nodes(){return ulist_;};
 
   // Initializers
-  void createDecomposition(Config *conf);
+  void createDecomposition(Config *conf, bool disable_print=false);
   void neighboursList(Config *conf, RealOffsetView4D halo_fn); 
   void bookHalo(Config *conf);
 

@@ -29,6 +29,7 @@
 #include "Field.hpp"
 #include "Math.hpp"
 #include "Timestep.hpp"
+#include "Tuning.hpp"
 #include "Timer.hpp"
 
 int main (int argc, char* argv[]) {
@@ -58,6 +59,22 @@ int main (int argc, char* argv[]) {
     init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers);
     int iter = 0;
 
+    #if defined( TILE_SIZE_TUNING )
+      field_rho(&conf, fn, ef);
+      field_reduce(&conf, ef);
+      field_poisson(&conf, ef, dg, iter);
+
+      comm.exchangeHalo(&conf, fn, timers);
+
+      // Tuning solve the first step of onetimestep repeatedly
+      TileSizeTuning tuning;
+      tileSizeTuning(&conf, comm, tuning, fn, fnp1, ef, dg, iter);
+
+      // After tuning init again
+      bool disable_print = true;
+      init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers, disable_print);
+    #endif
+
     Kokkos::fence();
     timers[Total]->begin();
 
@@ -73,7 +90,11 @@ int main (int argc, char* argv[]) {
       }
 
       iter++;
-      onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);
+      #if defined( TILE_SIZE_TUNING )
+        onetimestep(&conf, comm, tuning, fn, fnp1, ef, dg, timers, iter);
+      #else
+        onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);
+      #endif
       Impl::swap(fn, fnp1);
       timers[MainLoop]->end();
     }
