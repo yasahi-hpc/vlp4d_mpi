@@ -17,8 +17,10 @@
 
 namespace Advection {
 
-  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt);
-  void advect_4D(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D tmp_fn, float64 dt);
+  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt, 
+                    const std::vector<int> &tiles={TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3});
+  void advect_4D(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D tmp_fn, float64 dt, 
+                 const std::vector<int> &tiles={TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3});
   void print_fxvx(Config *conf, Distrib &comm, const RealOffsetView4D fn, int iter);
 
   static void testError(View1D<int> &err) {
@@ -471,7 +473,7 @@ namespace Advection {
     }
   };
 
-  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt) {
+  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt, const std::vector<int> &tiles) {
     const Domain *dom = &(conf->dom_);
 
     int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
@@ -484,6 +486,7 @@ namespace Advection {
     Impl::deep_copy(fn_tmp, fn);
     View1D<int> error("error", 1);
     auto scatter_error = Kokkos::Experimental::create_scatter_view(error);
+    const int TX = tiles[0], TY = tiles[1], TVX = tiles[2], TVY = tiles[3];
 
     /* 3D policy
     MDPolicyType_3D advect_2d_policy3d({{nx_min,   ny_min,   nvx_min}},
@@ -494,7 +497,7 @@ namespace Advection {
     */
     MDPolicyType_4D advect_2d_policy4d({{nx_min,   ny_min,   nvx_min,   nvy_min}},
                                        {{nx_max+1, ny_max+1, nvx_max+1, nvy_max+1}},
-                                       {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
+                                       {{TX, TY, TVX, TVY}}
                                       );
     Kokkos::parallel_for("advect_2d", advect_2d_policy4d, blocked_advect_2D_xy_functor(conf, fn, fn_tmp, dt, scatter_error));
 
@@ -502,7 +505,7 @@ namespace Advection {
     testError(error);
   }
 
-  void advect_4D(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D tmp_fn, float64 dt) {
+  void advect_4D(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D tmp_fn, float64 dt, const std::vector<int> &tiles) {
     const Domain *dom = &(conf->dom_);
     int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
     int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
@@ -519,9 +522,10 @@ namespace Advection {
 
     Kokkos::parallel_for("advect_4d", advect_4d_policy3d, advect_4D_functor(conf, ef, fn, tmp_fn, dt, scatter_error));
     */
+    const int TX = tiles[0], TY = tiles[1], TVX = tiles[2], TVY = tiles[3];
     MDPolicyType_4D advect_4d_policy4d({{nx_min,   ny_min,   nvx_min,   nvy_min}},
                                        {{nx_max+1, ny_max+1, nvx_max+1, nvy_max+1}},
-                                       {{TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3}}
+                                       {{TX, TY, TVX, TVY}}
                                       );
 
     Kokkos::parallel_for("advect_4d", advect_4d_policy4d, advect_4D_functor(conf, ef, fn, tmp_fn, dt, scatter_error));

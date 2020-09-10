@@ -30,7 +30,7 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
   timers[Advec2D]->end();
 
   timers[TimerEnum::Field]->begin();
-  field_rho(conf, comm, fn, ef);
+  field_rho(conf, fn, ef);
   timers[TimerEnum::Field]->end();
 
   timers[TimerEnum::AllReduce]->begin();
@@ -50,7 +50,7 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
   timers[Advec4D]->end();
 
   timers[TimerEnum::Field]->begin();
-  field_rho(conf, comm, fnp1, ef);
+  field_rho(conf, fnp1, ef);
   timers[TimerEnum::Field]->end();
 
   timers[TimerEnum::AllReduce]->begin();
