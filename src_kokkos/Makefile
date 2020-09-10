@@ -10,13 +10,9 @@ default: build
 ifneq (,$(findstring p100,$(KOKKOS_DEVICES)))
 CXX = ${KOKKOS_PATH}/bin/nvcc_wrapper
 CXXFLAGS = -O3
-ifneq (,$(findstring 3D,$(RANGE_POLICY)))
-  # In order to set tile sizes at compile time
-  CXXFLAGS += -DPOLICY_3D
-  CXXFLAGS += -DTILE_X0=32 -DTILE_Y0=4 -DTILE_Z0=2
-  CXXFLAGS += -DTILE_X1=32 -DTILE_Y1=4 -DTILE_Z1=2
-  CXXFLAGS += -DTILE_X2=32 -DTILE_Y2=4 -DTILE_Z2=2
-  CXXFLAGS += -DTILE_X3=32 -DTILE_Y3=4 -DTILE_Z3=2
+ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+  # enable auto-tuning against tile sizes
+  CXXFLAGS += -DTILE_SIZE_TUNING
 endif
 LINK = mpicxx
 LDFLAGS = -lcufft -lcublas
@@ -30,13 +26,9 @@ endif
 ifneq (,$(findstring bdw,$(KOKKOS_DEVICES)))
 CXX = icpc
 CXXFLAGS = -O3
-ifneq (,$(findstring 3D,$(RANGE_POLICY)))
-  # In order to set tile sizes at compile time
-  CXXFLAGS += -DPOLICY_3D
-  CXXFLAGS += -DTILE_X0=16 -DTILE_Y0=1  -DTILE_Z0=1
-  CXXFLAGS += -DTILE_X1=1  -DTILE_Y1=32 -DTILE_Z1=4
-  CXXFLAGS += -DTILE_X2=1  -DTILE_Y2=1  -DTILE_Z2=8
-  CXXFLAGS += -DTILE_X3=1  -DTILE_Y3=1  -DTILE_Z3=16
+ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+  # enable auto-tuning against tile sizes
+  CXXFLAGS += -DTILE_SIZE_TUNING
 endif
 LINK = mpicxx
 LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
@@ -50,13 +42,9 @@ ifneq (,$(findstring v100,$(KOKKOS_DEVICES)))
 KOKKOS_PATH = /ccs/home/yasahi/lib/kokkos
 CXX = ${KOKKOS_PATH}/bin/nvcc_wrapper
 CXXFLAGS = -O3
-ifneq (,$(findstring 3D,$(RANGE_POLICY)))
-  # In order to set tile sizes at compile time
-  CXXFLAGS += -DPOLICY_3D
-  CXXFLAGS += -DTILE_X0=32 -DTILE_Y0=4 -DTILE_Z0=2
-  CXXFLAGS += -DTILE_X1=32 -DTILE_Y1=4 -DTILE_Z1=2
-  CXXFLAGS += -DTILE_X2=32 -DTILE_Y2=4 -DTILE_Z2=2
-  CXXFLAGS += -DTILE_X3=32 -DTILE_Y3=4 -DTILE_Z3=2
+ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+  # enable auto-tuning against tile sizes
+  CXXFLAGS += -DTILE_SIZE_TUNING
 endif
 LINK = mpicxx
 LDFLAGS = -lcufft -lcublas
@@ -71,13 +59,9 @@ ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
 KOKKOS_PATH = /home/asahiy/lib/kokkos
 CXX = CC
 CXXFLAGS = -O3
-ifneq (,$(findstring 3D,$(RANGE_POLICY)))
-  # In order to set tile sizes at compile time
-  CXXFLAGS += -DPOLICY_3D
-  CXXFLAGS += -DTILE_X0=16 -DTILE_Y0=1  -DTILE_Z0=1
-  CXXFLAGS += -DTILE_X1=1  -DTILE_Y1=32 -DTILE_Z1=4
-  CXXFLAGS += -DTILE_X2=1  -DTILE_Y2=1  -DTILE_Z2=8
-  CXXFLAGS += -DTILE_X3=1  -DTILE_Y3=1  -DTILE_Z3=16
+ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+  # enable auto-tuning against tile sizes
+  CXXFLAGS += -DTILE_SIZE_TUNING
 endif
 LINK = ${CXX}
 LDFLAGS = -lfftw3_threads -lfftw3
@@ -91,12 +75,9 @@ ifneq (,$(findstring tx2,$(KOKKOS_DEVICES)))
 KOKKOS_PATH = /ccc/home/cont002/qst/asahiy/lib/src/kokkos
 CXX=armclang++
 CXXFLAGS=-O3 -armpl
-ifneq (,$(findstring 3D,$(RANGE_POLICY)))
-  # In order to set tile sizes at compile time
-  CXXFLAGS += -DTILE_X0=16 -DTILE_Y0=1  -DTILE_Z0=1
-  CXXFLAGS += -DTILE_X1=1  -DTILE_Y1=32 -DTILE_Z1=4
-  CXXFLAGS += -DTILE_X2=1  -DTILE_Y2=1  -DTILE_Z2=8
-  CXXFLAGS += -DTILE_X3=1  -DTILE_Y3=1  -DTILE_Z3=16
+ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+  # enable auto-tuning against tile sizes
+  CXXFLAGS += -DTILE_SIZE_TUNING
 endif
 LINK = ${CXX}
 LDFLAGS=-armpl
