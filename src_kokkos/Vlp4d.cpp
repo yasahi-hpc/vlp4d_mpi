@@ -59,6 +59,15 @@ int main (int argc, char* argv[]) {
     init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers);
     int iter = 0;
 
+    if(comm.master()) {
+      #if defined( TILE_SIZE_TUNING )
+        std::cout << "Auto tuning over tile sizes" << std::endl;
+      #endif
+      #if defined( LAYOUT_LEFT )
+        std::cout << "Layout tuning for CPU" << std::endl;
+      #endif
+    }
+
     #if defined( TILE_SIZE_TUNING )
       field_rho(&conf, fn, ef);
       field_reduce(&conf, ef);

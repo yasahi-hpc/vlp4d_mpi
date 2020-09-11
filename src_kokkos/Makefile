@@ -30,6 +30,14 @@ ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
   # enable auto-tuning against tile sizes
   CXXFLAGS += -DTILE_SIZE_TUNING
 endif
+ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+  # enable layout-tuning
+  CXXFLAGS += -DLAYOUT_LEFT
+endif
+ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+  # enable layout-tuning
+  CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING
+endif
 LINK = mpicxx
 LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
 EXE = vlp4d.tsubame3.0_bdw_kokkos
