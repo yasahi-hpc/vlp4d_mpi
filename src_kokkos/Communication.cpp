@@ -545,5 +545,6 @@ void Distrib::exchangeHalo(Config *conf, RealOffsetView4D halo_fn, std::vector<T
   // copy halo regions back into distribution function
   timers[TimerEnum::unpacking]->begin();
   unpack(halo_fn);
+  Kokkos::fence();
   timers[TimerEnum::unpacking]->end();
 }

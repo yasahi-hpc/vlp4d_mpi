@@ -34,9 +34,13 @@ ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
   # enable layout-tuning
   CXXFLAGS += -DLAYOUT_LEFT
 endif
+ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
+  # disable scatter views and use parallel reduce for error check
+  CXXFLAGS += -DNO_SCATTER_VIEWS
+endif
 ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
   # enable layout-tuning
-  CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING
+  CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
 endif
 LINK = mpicxx
 LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f

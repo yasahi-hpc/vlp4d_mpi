@@ -230,6 +230,7 @@ namespace Spline {
                                           );
       Kokkos::parallel_for("spline_coef_vxvy", spline_vxvy_policy2d, spline_coef_2d(conf, fn));
     #endif
+    Kokkos::fence();
   }
 };
 
