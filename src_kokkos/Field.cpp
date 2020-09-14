@@ -1,6 +1,4 @@
 #include "Field.hpp"
-//#include "index.h"
-//#include "helper.hpp"
 #include "tiles.h"
 
 void lu_solve_poisson(Config *conf, Efield *ef, Diags *dg, int iter);
@@ -60,6 +58,7 @@ void field_rho(Config *conf, RealOffsetView4D fn, Efield *ef, const std::vector<
     // stored in the global address
     rho_loc(ix, iy) = sum * dvx * dvy;
   });
+  Kokkos::fence();
 };
 
 void field_reduce(Config *conf, Efield *ef) {
