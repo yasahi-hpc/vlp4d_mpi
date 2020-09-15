@@ -130,7 +130,7 @@ void Distrib::neighboursList(Config *conf, RealOffsetView4D halo_fn) {
   const int s_nvymax = dom.nxmax_[3];
 
   Urbnode &mynode = ulist_[pid_];
-  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::Experimental::create_mirror_view(halo_fn);
+  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::create_mirror_view(halo_fn);
 
   // Process periodic boundary condition to get a complete map
   for(int ivy = mynode.xmin_[3] - HALO_PTS; ivy < mynode.xmax_[3] + HALO_PTS + 1; ivy++) {

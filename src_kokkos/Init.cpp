@@ -146,7 +146,7 @@ void testcaseCYL02(Config* conf, RealOffsetView4D fn) {
   const float64 cc = 0.50 * (6. / 16.);
   const float64 rc = 0.50 * (4. / 16.);
 
-  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
 
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
@@ -177,7 +177,7 @@ void testcaseCYL02(Config* conf, RealOffsetView4D fn) {
       }
     }
   }
-  Kokkos::Experimental::deep_copy(fn, h_fn);
+  Kokkos::deep_copy(fn, h_fn);
 }
 
 void testcaseCYL05(Config* conf, RealOffsetView4D fn) {
@@ -188,7 +188,7 @@ void testcaseCYL05(Config* conf, RealOffsetView4D fn) {
   const float64 cc = 0.50 * (6. / 16.);
   const float64 rc = 0.50 * (4. / 16.);
 
-  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx < dom->local_nxmax_[2]; ivx++) {
       float64 vy = dom->minPhy_[3] + ivy * dom->dx_[3];
@@ -218,13 +218,13 @@ void testcaseCYL05(Config* conf, RealOffsetView4D fn) {
       }
     }
   }
-  Kokkos::Experimental::deep_copy(fn, h_fn);
+  Kokkos::deep_copy(fn, h_fn);
 }
 
 void testcaseSLD10(Config* conf, RealOffsetView4D fn) {
   Domain * dom = &(conf->dom_);
 
-  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
       float64 vy = dom->minPhy_[3] + ivy * dom->dx_[3];
@@ -240,7 +240,7 @@ void testcaseSLD10(Config* conf, RealOffsetView4D fn) {
       }
     }
   }
-  Kokkos::Experimental::deep_copy(fn, h_fn);
+  Kokkos::deep_copy(fn, h_fn);
 }
 
 void testcaseTSI20(Config* conf, RealOffsetView4D fn) {
@@ -254,7 +254,7 @@ void testcaseTSI20(Config* conf, RealOffsetView4D fn) {
   float64 kx  = 0.2;
   float64 ky  = 0.2;
     
-  typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
+  typename RealOffsetView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
       double vy = dom->minPhy_[3] + ivy * dom->dx_[3];
@@ -273,7 +273,7 @@ void testcaseTSI20(Config* conf, RealOffsetView4D fn) {
       }
     }
   }
-  Kokkos::Experimental::deep_copy(fn, h_fn);
+  Kokkos::deep_copy(fn, h_fn);
 }
 
 /* @brief pack some numbers into halo_fn for checking the communication routines
@@ -281,7 +281,7 @@ void testcaseTSI20(Config* conf, RealOffsetView4D fn) {
 void testcase_ptest_init(Config *conf, Distrib &comm, RealOffsetView4D halo_fn) {
   const Domain *dom = &(conf->dom_);
 
-  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::Experimental::create_mirror_view(halo_fn);
+  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::create_mirror_view(halo_fn);
 
   for(int ivy = dom->local_nxmin_[3]; ivy <= dom->local_nxmax_[3]; ivy++) {
     for(int ivx = dom->local_nxmin_[2]; ivx <= dom->local_nxmax_[2]; ivx++) {
@@ -293,7 +293,7 @@ void testcase_ptest_init(Config *conf, Distrib &comm, RealOffsetView4D halo_fn) 
     }
   }
 
-  Kokkos::Experimental::deep_copy(halo_fn, h_halo_fn);
+  Kokkos::deep_copy(halo_fn, h_halo_fn);
 }
 
 void testcase_ptest_check(Config* conf, Distrib &comm, RealOffsetView4D halo_fn) {
@@ -301,8 +301,8 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealOffsetView4D halo_fn)
   Urbnode *node = comm.node();
   int offp = HALO_PTS - 1, offm = HALO_PTS - 1;
 
-  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::Experimental::create_mirror_view(halo_fn);
-  Kokkos::Experimental::deep_copy(h_halo_fn, halo_fn);
+  typename RealOffsetView4D::HostMirror h_halo_fn = Kokkos::create_mirror_view(halo_fn);
+  Kokkos::deep_copy(h_halo_fn, halo_fn);
   for(int ivy = node->xmin_[3] - offm; ivy <= node->xmax_[3] + offp; ivy++) {
     for(int ivx = node->xmin_[2] - offm; ivx <= node->xmax_[2] + offp; ivx++) {
       const int jvy = (dom->nxmax_[3] + ivy) % dom->nxmax_[3];
