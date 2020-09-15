@@ -531,8 +531,8 @@ namespace Advection {
     const int nvx = dom->nxmax_[2];
     const int nvy = dom->nxmax_[3];
           
-    typename RealOffsetView4D::HostMirror h_fn = Kokkos::Experimental::create_mirror_view(fn);
-    Kokkos::Experimental::deep_copy(h_fn, fn);
+    typename RealOffsetView4D::HostMirror h_fn = Kokkos::create_mirror_view(fn);
+    Kokkos::deep_copy(h_fn, fn);
 
     typedef RealView2D::HostMirror RealView2Dhost;
 
