@@ -7,7 +7,8 @@
 #include "Config.hpp"
 #include "Communication.hpp"
 
-void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers, bool disable_print=false);
+void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers);
+void initValues(Config *conf, RealOffsetView4D &fn, RealOffsetView4D &fnp1);
 void finalize(Efield **ef, Diags **dg);
 
 #endif

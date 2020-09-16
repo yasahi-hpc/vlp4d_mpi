@@ -80,8 +80,7 @@ int main (int argc, char* argv[]) {
       tileSizeTuning(&conf, comm, tuning, fn, fnp1, ef, dg, iter);
 
       // After tuning init again
-      bool disable_print = true;
-      init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers, disable_print);
+      initValues(&conf, fn, fnp1);
     #endif
 
     Kokkos::fence();

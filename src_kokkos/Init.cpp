@@ -1,4 +1,5 @@
 #include "Init.hpp"
+#include "Math.hpp"
 
 // Prototypes
 void import(const char *f, Config *conf);
@@ -327,14 +328,14 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealOffsetView4D halo_fn)
   }
 }
 
-void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers, bool disable_print) {
+void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers) {
   Domain* dom = &conf->dom_; 
 
   import(file, conf);
-  if(comm.master() && !disable_print) print(conf);
+  if(comm.master()) print(conf);
 
   // Initialize communication manager
-  comm.createDecomposition(conf, disable_print);
+  comm.createDecomposition(conf);
   Urbnode *mynode = comm.node();
 
   shape_t<DIMENSION> nxmin_halo;
@@ -368,6 +369,13 @@ void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, R
 
   // Initialize distribution function with zeros
   fn = RealOffsetView4D("fn", {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
+  initcase(conf, fn);
+}
+
+void initValues(Config *conf, RealOffsetView4D &fn, RealOffsetView4D &fnp1) {
+  // Initialize distribution function with zeros
+  Impl::fill(fn, 0);
+  Impl::fill(fnp1, 0);
   initcase(conf, fn);
 }
 
