@@ -9,3 +9,4 @@ wk/*
 !wk/*.sh
 !wk/*.dat
 !wk/batch_scripts
+!wk/opt_data

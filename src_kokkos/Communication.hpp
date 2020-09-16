@@ -46,7 +46,7 @@ struct Halo{
 struct Halos{
   typedef Kokkos::View<int*[DIMENSION], execution_space> RangeView2D;
   typedef Kokkos::View<int*[DIMENSION][DIMENSION], execution_space> RangeView3D;
-  RealView2D buf_;
+  RealView2D buf_; // remove this no longer used
   RealView1D buf_flatten_;
   RangeView2D xmin_;
   RangeView2D xmax_;
@@ -631,7 +631,7 @@ struct Halos{
     mergeLists(conf, name, h_map_2D2flatten);
     if(name == "send") {
       // 2D Buffer is used only for send buffer [TO DO] delete this
-      buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
+      //buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
       listBoundary(conf, name, h_map_2D2flatten);
     }
   }
@@ -699,7 +699,7 @@ public:
   std::vector<Urbnode> &nodes(){return ulist_;};
 
   // Initializers
-  void createDecomposition(Config *conf, bool disable_print=false);
+  void createDecomposition(Config *conf);
   void neighboursList(Config *conf, RealOffsetView4D halo_fn); 
   void bookHalo(Config *conf);
 

@@ -7,7 +7,7 @@
 // Apply the Unbalanced Recursive Bisection (URB) algorithm to establish the boxes
 // (parts of the computational domain) that are assigned to MPI processes. The result
 // is stored within dis.ulist data structure
-void Distrib::createDecomposition(Config *conf, bool disable_print) {
+void Distrib::createDecomposition(Config *conf) {
   Domain &dom = conf->dom_;
 
   ulist_.resize(nbp_);
@@ -88,7 +88,7 @@ void Distrib::createDecomposition(Config *conf, bool disable_print) {
   for(int id = 0; id < nbp_; id++) {
     const uint64 mcontrib = (ulist_[id].xmax_[3] - ulist_[id].xmin_[3] + 1) * (ulist_[id].xmax_[2] - ulist_[id].xmin_[2] + 1)
                           * (ulist_[id].xmax_[1] - ulist_[id].xmin_[1] + 1) * (ulist_[id].xmax_[0] - ulist_[id].xmin_[0] + 1);
-    if(master() && !disable_print)
+    if(master())
       printf("[%d] local domain [%4u:%4u,%4u:%4u,%4u:%4u,%4u:%4u] cost %lu\n", id, ulist_[id].xmin_[0], ulist_[id].xmax_[0], ulist_[id].xmin_[1],
             ulist_[id].xmax_[1], ulist_[id].xmin_[2], ulist_[id].xmax_[2], ulist_[id].xmin_[3], ulist_[id].xmax_[3], mcontrib);
     msum += mcontrib;

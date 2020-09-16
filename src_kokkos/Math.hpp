@@ -24,6 +24,15 @@ namespace Impl {
   void free(ViewType &a) {
     a = ViewType();
   }
+
+  template <class ViewType, typename ScalarType>
+  void fill(ViewType &a, ScalarType value) {
+    const size_t n = a.size();
+    typedef typename ViewType::value_type value_type;
+    Kokkos::parallel_for("fill", n, KOKKOS_LAMBDA(const int i) {
+      a.data()[i] = static_cast<value_type>(value);
+    });
+  }
 };
 
 #endif

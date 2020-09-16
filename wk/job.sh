@@ -9,8 +9,14 @@ elif ls *.tsubame3.0_bdw_openmp > /dev/null 2>&1; then
   qsub -g jh200053 batch_scripts/sub_tsubame3.0_bdw_omp.sh
 elif ls *.pacs_knl_openmp > /dev/null 2>&1; then
   pjsub batch_scripts/sub_pacs_knl_omp.sh
+elif ls *.flow_a64fx_kokkos > /dev/null 2>&1; then
+  pjsub batch_scripts/sub_flow_a64fx_kokkos.sh
 elif ls *.flow_a64fx_openmp > /dev/null 2>&1; then
   pjsub batch_scripts/sub_flow_a64fx_omp.sh
+elif ls *.fugaku_a64fx_kokkos > /dev/null 2>&1; then
+  pjsub batch_scripts/sub_fugaku_a64fx_kokkos.sh
+elif ls *.fugaku_a64fx_openmp > /dev/null 2>&1; then
+  pjsub batch_scripts/sub_fugaku_a64fx_omp.sh
 else
   echo "No executable!"
 fi

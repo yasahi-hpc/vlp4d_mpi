@@ -21,15 +21,9 @@ void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOff
   int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
   int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
 
-  RealOffsetView4D fn_tmp = RealOffsetView4D("fn_tmp", 
-                                             {fn.begin(0), fn.end(0)-1}, 
-                                             {fn.begin(1), fn.end(1)-1}, 
-                                             {fn.begin(2), fn.end(2)-1}, 
-                                             {fn.begin(3), fn.end(3)-1});
-
-  Impl::deep_copy(fn_tmp, fn);
+  Impl::deep_copy(fnp1, fn);
   // Tuning for Spline_xy
-  auto spline_xy = std::bind(Spline::computeCoeff_xy, conf, fn_tmp, std::placeholders::_1);
+  auto spline_xy = std::bind(Spline::computeCoeff_xy, conf, fnp1, std::placeholders::_1);
   tuning.registerKernel("coeff_xy", {nvx_max+1-nvx_min, nvy_max+1-nvy_min, 1, 1});
   tuning.scan("coeff_xy", spline_xy, comm.rank());
 
@@ -38,8 +32,7 @@ void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOff
   Impl::deep_copy(fnp1, fn);
 
   // Tuning for Adv2D
-  Impl::deep_copy(fn_tmp, fn);
-  auto adv2d = std::bind(Advection::advect_2D_xy, conf, fn_tmp, dom->dt_, std::placeholders::_1);
+  auto adv2d = std::bind(Advection::advect_2D_xy, conf, fnp1, dom->dt_*0.5, std::placeholders::_1);
   tuning.registerKernel("Adv2D", {nx_max+1-nx_min, ny_max+1-ny_min, nvx_max+1-nvx_min, nvy_max+1-nvy_min});
   tuning.scan("Adv2D", adv2d, comm.rank());
 
@@ -47,8 +40,7 @@ void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOff
   Advection::advect_2D_xy(conf, fn, 0.5 * dom->dt_);
 
   // Tuning for field_rho
-  Impl::deep_copy(fn_tmp, fn);
-  auto integral = std::bind(field_rho, conf, fn_tmp, ef, std::placeholders::_1);
+  auto integral = std::bind(field_rho, conf, fn, ef, std::placeholders::_1);
   tuning.registerKernel("integral", {nx_max+1-nx_min, ny_max+1-ny_min, 1, 1});
   tuning.scan("integral", integral, comm.rank());
 
@@ -58,8 +50,8 @@ void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOff
   field_poisson(conf, ef, dg, iter);
 
   // Tuning for Spline_vxvy
-  Impl::deep_copy(fn_tmp, fn);
-  auto spline_vxvy = std::bind(Spline::computeCoeff_vxvy, conf, fn_tmp, std::placeholders::_1);
+  Impl::deep_copy(fnp1, fn);
+  auto spline_vxvy = std::bind(Spline::computeCoeff_vxvy, conf, fnp1, std::placeholders::_1);
   tuning.registerKernel("coeff_vxvy", {nx_max+1-nx_min, ny_max+1-ny_min, 1, 1});
   tuning.scan("coeff_vxvy", spline_vxvy, comm.rank());
 

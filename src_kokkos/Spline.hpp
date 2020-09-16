@@ -180,12 +180,12 @@ namespace Spline {
 
       typedef typename RealOffsetView4D::array_layout array_layout;
       Impl::Transpose<float64, array_layout> transpose(nx*ny, nvx*nvy); 
-      RealOffsetView4D fn_trans = RealOffsetView4D("fn_trans", 
-                                                   {nvx_min, nvx_max-1}, 
-                                                   {nvy_min, nvy_max-1},
-                                                   {nx_min, nx_max-1}, 
-                                                   {ny_min, ny_max-1}
-                                                   );
+      RealOffsetView4D fn_trans("fn_trans", 
+                                {nvx_min, nvx_max-1}, 
+                                {nvy_min, nvy_max-1},
+                                {nx_min, nx_max-1}, 
+                                {ny_min, ny_max-1}
+                               );
       transpose.forward(fn.data(), fn_trans.data());
       MDPolicyType_2D spline_xy_policy2d({{0,  0}},
                                          {{nvx, nvy}},
@@ -208,12 +208,12 @@ namespace Spline {
      
       typedef typename RealOffsetView4D::array_layout array_layout;
       Impl::Transpose<float64, array_layout> transpose(nx*ny, nvx*nvy);
-      RealOffsetView4D fn_trans = RealOffsetView4D("fn_trans",
-                                                   {nvx_min, nvx_max-1},
-                                                   {nvy_min, nvy_max-1},
-                                                   {nx_min, nx_max-1},
-                                                   {ny_min, ny_max-1}
-                                                  );
+      RealOffsetView4D fn_trans("fn_trans",
+                                {nvx_min, nvx_max-1},
+                                {nvy_min, nvy_max-1},
+                                {nx_min, nx_max-1},
+                                {ny_min, ny_max-1}
+                               );
       transpose.forward(fn.data(), fn_trans.data());
       MDPolicyType_2D spline_xy_policy2d({{0,  0}},
                                          {{nx, ny}},

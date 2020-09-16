@@ -49,6 +49,33 @@ KOKKOS_DEVICES = "OpenMP"
 KOKKOS_ARCH = "BDW"
 endif
 
+# Fujitsu A64FX on flow (Nagoya Univ, Japan)
+ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
+  CXX = mpiFCCpx
+  CXXFLAGS = -O3 -Kfast,openmp -Krestp=all
+  ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+    # enable auto-tuning against tile sizes
+    CXXFLAGS += -DTILE_SIZE_TUNING
+  endif
+  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT
+  endif
+  ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
+    # disable scatter views and use parallel reduce for error check
+    CXXFLAGS += -DNO_SCATTER_VIEWS
+  endif
+  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+    # enable all the optimizations
+    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
+  endif
+  LINK = ${CXX}
+  LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -Kfast,openmp -lstdc++
+  EXE = vlp4d.flow_a64fx_kokkos
+  KOKKOS_DEVICES = "OpenMP"
+  KOKKOS_ARCH = "A64FX"
+endif
+
 # Nvidia TeslaV100 on Summit (OLCF, US)
 ifneq (,$(findstring v100,$(KOKKOS_DEVICES)))
 KOKKOS_PATH = /ccs/home/yasahi/lib/kokkos
