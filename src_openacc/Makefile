@@ -16,8 +16,11 @@ endif
 ifneq (,$(findstring bdw,$(DEVICES)))
   CXX=mpicxx
   CXXFLAGS=-O3 -std=c++11 -qopenmp -xCORE-AVX2 -DLAYOUT_LEFT
+  ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
+    CXXFLAGS += -DSIMD
+  endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    CXXFLAGS += -DNO_ERROR_CHECK
+    CXXFLAGS += -DNO_ERROR_CHECK -DSIMD
   endif
   LDFLAGS = -lm -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -qopenmp
   TARGET = vlp4d.tsubame3.0_bdw_openmp
@@ -27,8 +30,11 @@ endif
 ifneq (,$(findstring knl,$(DEVICES)))
   CXX=mpiicpc
   CXXFLAGS=-O3 -std=c++11 -qopenmp -axMIC-AVX512 -DLAYOUT_LEFT
+  ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
+    CXXFLAGS += -DSIMD
+  endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    CXXFLAGS += -DNO_ERROR_CHECK
+    CXXFLAGS += -DNO_ERROR_CHECK -DSIMD
   endif
   LDFLAGS = -lm -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -qopenmp -lstdc++
   TARGET = vlp4d.pacs_knl_openmp
@@ -39,8 +45,11 @@ ifneq (, $(findstring a64fx_flow,$(DEVICES)))
   #Fujitsu
   CXX = mpiFCCpx
   CXXFLAGS = -O3 -g -std=c++11 -Kfast,openmp,optmsg=2 -Nlst=t -DLAYOUT_LEFT -Krestp=all
+  ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
+    CXXFLAGS += -DSIMD
+  endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    CXXFLAGS += -DNO_ERROR_CHECK
+    CXXFLAGS += -DNO_ERROR_CHECK -DSIMD
   endif
   LDFLAGS  = -Kfast,openmp -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstdc++
   TARGET   = vlp4d.flow_a64fx_openmp
@@ -50,8 +59,11 @@ endif
 ifneq (, $(findstring skx,$(DEVICES)))
   CXX = CC
   CXXFLAGS = -O3 -std=c++11 -qopenmp -xCORE-AVX512 -DLAYOUT_LEFT
+  ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
+    CXXFLAGS += -DSIMD
+  endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    CXXFLAGS += -DNO_ERROR_CHECK
+    CXXFLAGS += -DNO_ERROR_CHECK -DSIMD
   endif
   LDFLAGS  = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstdc++ -qopenmp
   TARGET   = vlp4d.jfrs1_skx_openmp

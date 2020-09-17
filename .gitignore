@@ -1,8 +1,14 @@
-# Compiled Object files
+# Compiled Object files for Kokkos
 src_kokkos/*.slo
 src_kokkos/*.lo
 src_kokkos/*.o
 src_kokkos/*.obj
+
+# Compiled Object files for OpenACC/OpenMP
+src_openacc/*.slo
+src_openacc/*.lo
+src_openacc/*.o
+src_openacc/*.obj
 
 # Batch scripts and input data
 wk/*
