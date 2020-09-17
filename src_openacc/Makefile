@@ -34,6 +34,14 @@ LDFLAGS  = -Kfast,openmp -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstd
 TARGET   = vlp4d.flow_a64fx_openmp
 endif
 
+# Intel Skylake on JFRS-1 (IFERC-CSC, Japan)
+ifneq (, $(findstring skx,$(DEVICES)))
+  CXX = CC
+  CXXFLAGS = -O3 -std=c++11 -qopenmp -xCORE-AVX512 -DLAYOUT_LEFT
+  LDFLAGS  = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstdc++ -qopenmp
+  TARGET   = vlp4d.jfrs1_skx_openmp
+endif
+
 # Linker
 LINKER = $(CXX)
 	         
