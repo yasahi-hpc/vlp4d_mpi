@@ -11,11 +11,12 @@ void field_rho(Config *conf, RealView4D &fn, Efield *ef) {
 
   #if defined( ENABLE_OPENACC )
     #pragma acc data present(ef[0:1], ef->rho_loc_, fn)
-    #pragma acc parallel loop collapse(2)
+    #pragma acc parallel loop
   #else
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for
   #endif
   for(int iy=ny_min; iy<ny_max; iy++) {
+    LOOP_SIMD
     for(int ix=nx_min; ix<nx_max; ix++) {
       float64 sum = 0.;
       for(int ivy=nvy_min; ivy<nvy_max; ivy++) {
@@ -55,11 +56,12 @@ void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter) {
     case 2:
       #if defined( ENABLE_OPENACC )
         #pragma acc data present(ef[0:1], ef->ex_, ef->ey_)
-        #pragma acc parallel loop collapse(2)
+        #pragma acc parallel loop
       #else
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
       #endif
       for(int iy = 0; iy < ny; iy++) {
+        LOOP_SIMD
         for(int ix = 0; ix < nx; ix++) {
           ef->ex_(ix, iy) = -(minPhyx + ix * dx);
           ef->ey_(ix, iy) = 0.;
@@ -69,11 +71,12 @@ void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter) {
     case 6:
       #if defined( ENABLE_OPENACC )
         #pragma acc data present(ef[0:1], ef->ex_, ef->ey_)
-        #pragma acc parallel loop collapse(2)
+        #pragma acc parallel loop
       #else
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
       #endif
       for(int iy = 0; iy < ny; iy++) {
+        LOOP_SIMD
         for(int ix = 0; ix < nx; ix++) {
           ef->ex_(ix, iy) = -(minPhyy + iy * dy);
           ef->ey_(ix, iy) = 0.;
@@ -86,11 +89,12 @@ void field_poisson(Config *conf, Efield *ef, Diags *dg, int iter) {
 
       #if defined( ENABLE_OPENACC )
         #pragma acc data present(ef[0:1], ef->rho_)
-        #pragma acc parallel loop collapse(2)
+        #pragma acc parallel loop
       #else
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
       #endif
       for(int iy = 0; iy < ny; iy++) {
+        LOOP_SIMD
         for(int ix = 0; ix < nx; ix++) {
           ef->rho_(ix, iy) -= 1.;
         }
