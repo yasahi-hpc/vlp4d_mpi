@@ -377,9 +377,7 @@ namespace Advection {
           #pragma acc loop independent
         #endif
         for(int iy = ny_min; iy < ny_max; iy++) {
-          #if defined( ENABLE_OPENACC )
-            #pragma acc loop vector independent
-          #endif
+          LOOP_SIMD
           for(int ix = nx_min; ix < nx_max; ix++) {
             const float64 x  = minPhyx  + ix  * dx;
             const float64 y  = minPhyy  + iy  * dy;
@@ -390,14 +388,22 @@ namespace Advection {
             const float64 xstar[2] = {x - depx, y - depy};
             const int indices[2] = {ivx, ivy};
             float64 ftmp = 0;
-            err += interp_2D(fn_tmp, xstar, inv_dx, minPhy, 
-                             xmin, xmax, indices, ftmp);
+            #if defined(NO_ERROR_CHECK)
+              int tmp_err = 0;
+              tmp_err += interp_2D(fn_tmp, xstar, inv_dx, minPhy,
+                                   xmin, xmax, indices, ftmp);
+            #else
+              err += interp_2D(fn_tmp, xstar, inv_dx, minPhy, 
+                               xmin, xmax, indices, ftmp);
+            #endif
             fn(ix, iy, ivx, ivy) = ftmp;
           }
         }
       }
     }
-    testError(err);
+    #if ! defined(NO_ERROR_CHECK)
+      testError(err);
+    #endif
   }
 
   template <Layout LayoutType>
@@ -447,9 +453,7 @@ namespace Advection {
     for(int ix = nx_min; ix < nx_max; ix++) {
       for(int iy = ny_min; iy < ny_max; iy++) {
         for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
-          #if defined( ENABLE_OPENACC )
-            #pragma acc loop vector independent
-          #endif
+          LOOP_SIMD
           for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
             const float64 x  = minPhyx  + ix  * dx;
             const float64 y  = minPhyy  + iy  * dy;
@@ -460,14 +464,22 @@ namespace Advection {
             const float64 xstar[2] = {x - depx, y - depy};
             const int indices[2] = {ivx, ivy};
             float64 ftmp = 0;
-            err += interp_2D(fn_tmp, xstar, inv_dx, minPhy, 
-                             xmin, xmax, indices, ftmp);
+            #if defined(NO_ERROR_CHECK)
+              int tmp_err = 0;
+              tmp_err += interp_2D(fn_tmp, xstar, inv_dx, minPhy,
+                                   xmin, xmax, indices, ftmp);
+            #else
+              err += interp_2D(fn_tmp, xstar, inv_dx, minPhy, 
+                               xmin, xmax, indices, ftmp);
+            #endif
             fn(ix, iy, ivx, ivy) = ftmp;
           }
         }
       }
     }
-    testError(err);
+    #if ! defined(NO_ERROR_CHECK)
+      testError(err);
+    #endif
   }
 
   // Layout left
@@ -511,25 +523,27 @@ namespace Advection {
     for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
       for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
         for(int iy = ny_min; iy < ny_max; iy++) {
-          #if defined( ENABLE_OPENACC )
-            #pragma acc loop vector independent
-          #endif
+          LOOP_SIMD
           for(int ix = nx_min; ix < nx_max; ix++) {
             float64 xstar[DIMENSION];
             int indices[4] = {ix, iy, ivx, ivy};
             computeFeet(xstar, ef->ex_, ef->ey_, rxmin, rxwidth,
                         dx, inv_dx, xmax, indices, dt);
 
-            for(int j = 0; j < DIMENSION; j++) {
-              err += (xstar[j] < locrxmindx[j] || xstar[j] > locrxmaxdx[j]);
-            }
+            #if defined(NO_ERROR_CHECK)
+              for(int j = 0; j < DIMENSION; j++) {
+                err += (xstar[j] < locrxmindx[j] || xstar[j] > locrxmaxdx[j]);
+              }
+            #endif
 
             fn(ix, iy, ivx, ivy) = interp_4D(tmp_fn, rxmin, inv_dx, xstar);
           }
         }
       }
     }
-    testError(err);
+    #if ! defined(NO_ERROR_CHECK)
+      testError(err);
+    #endif
   }
 
   // Layout right
@@ -573,25 +587,27 @@ namespace Advection {
     for(int ix = nx_min; ix < nx_max; ix++) {
       for(int iy = ny_min; iy < ny_max; iy++) {
         for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
-          #if defined( ENABLE_OPENACC )
-            #pragma acc loop vector independent
-          #endif
+          LOOP_SIMD
           for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
             float64 xstar[DIMENSION];
             int indices[4] = {ix, iy, ivx, ivy};
             computeFeet(xstar, ef->ex_, ef->ey_, rxmin, rxwidth,
                         dx, inv_dx, xmax, indices, dt);
 
-            for(int j = 0; j < DIMENSION; j++) {
-              err += (xstar[j] < locrxmindx[j] || xstar[j] > locrxmaxdx[j]);
-            }
+            #if defined(NO_ERROR_CHECK)
+              for(int j = 0; j < DIMENSION; j++) {
+                err += (xstar[j] < locrxmindx[j] || xstar[j] > locrxmaxdx[j]);
+              }
+            #endif
 
             fn(ix, iy, ivx, ivy) = interp_4D(tmp_fn, rxmin, inv_dx, xstar);
           }
         }
       }
     }
-    testError(err);
+    #if ! defined(NO_ERROR_CHECK)
+      testError(err);
+    #endif
   }
 
   void print_fxvx(Config *conf, Distrib &comm, const RealView4D &fn, int iter) {
