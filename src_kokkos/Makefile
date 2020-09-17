@@ -49,6 +49,33 @@ KOKKOS_DEVICES = "OpenMP"
 KOKKOS_ARCH = "BDW"
 endif
 
+# Intel Skylake on JFRS-1 (IFERC-CSC, Japan)
+ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
+  CXX = CC
+  CXXFLAGS = -O3
+  ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+    # enable auto-tuning against tile sizes
+    CXXFLAGS += -DTILE_SIZE_TUNING
+  endif
+  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT
+  endif
+  ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
+    # disable scatter views and use parallel reduce for error check
+    CXXFLAGS += -DNO_SCATTER_VIEWS
+  endif
+  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
+  endif
+  LINK = ${CXX}
+  LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
+  EXE = vlp4d.jfrs1_skx_kokkos
+  KOKKOS_DEVICES = "OpenMP"
+  KOKKOS_ARCH = "SKX"
+endif
+
 # Fujitsu A64FX on flow (Nagoya Univ, Japan)
 ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
   CXX = mpiFCCpx
