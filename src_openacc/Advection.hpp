@@ -367,7 +367,7 @@ namespace Advection {
     int err = 0;
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(2)
+      #pragma acc parallel loop collapse(2) reduction(+:err)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
@@ -446,12 +446,15 @@ namespace Advection {
     int err = 0;
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(3) reduction(+:err)
+      #pragma acc parallel loop collapse(2) reduction(+:err)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
     for(int ix = nx_min; ix < nx_max; ix++) {
       for(int iy = ny_min; iy < ny_max; iy++) {
+        #if defined( ENABLE_OPENACC )
+          #pragma acc loop independent
+        #endif
         for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
           LOOP_SIMD
           for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
@@ -516,12 +519,15 @@ namespace Advection {
 
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, tmp_fn, ef[0:1], ef->ex_, ef->ey_)
-      #pragma acc parallel loop collapse(3)
+      #pragma acc parallel loop collapse(2) reduction(+:err)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
     for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
       for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
+        #if defined( ENABLE_OPENACC )
+          #pragma acc loop independent
+        #endif
         for(int iy = ny_min; iy < ny_max; iy++) {
           LOOP_SIMD
           for(int ix = nx_min; ix < nx_max; ix++) {
@@ -580,12 +586,15 @@ namespace Advection {
 
     #if defined( ENABLE_OPENACC )
       #pragma acc data present(fn, tmp_fn, ef->ex_, ef->ey_)
-      #pragma acc parallel loop collapse(3)
+      #pragma acc parallel loop collapse(2) reduction(+:err)
     #else
       #pragma omp parallel for collapse(2) reduction(+:err)
     #endif
     for(int ix = nx_min; ix < nx_max; ix++) {
       for(int iy = ny_min; iy < ny_max; iy++) {
+        #if defined( ENABLE_OPENACC )
+          #pragma acc loop independent
+        #endif
         for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
           LOOP_SIMD
           for(int ivy = nvy_min; ivy < nvy_max; ivy++) {

@@ -23,11 +23,12 @@ void Diags::compute(Config *conf, Efield *ef, int iter) {
   float64 it_nrj = 0., it_nrjx = 0., it_nrjy = 0.;
   #if defined( ENABLE_OPENACC )
     #pragma acc data present(ef[0:1], ef->rho_, ef->ex_, ef->ey_)
-    #pragma acc parallel loop collapse(2) reduction(+:iter_mass,it_nrj,it_nrjx,it_nrjy)
+    #pragma acc parallel loop reduction(+:iter_mass,it_nrj,it_nrjx,it_nrjy)
   #else
-    #pragma omp parallel for collapse(2) reduction(+:iter_mass,it_nrj,it_nrjx,it_nrjy)
+    #pragma omp parallel for reduction(+:iter_mass,it_nrj,it_nrjx,it_nrjy)
   #endif 
   for(int iy = 0; iy < ny; iy++) {
+    LOOP_SIMD
     for(int ix = 0; ix < nx; ix++) {
       const float64 eex = ef->ex_(ix, iy);
       const float64 eey = ef->ey_(ix, iy);
@@ -55,13 +56,14 @@ void Diags::computeL2norm(Config *conf, RealView4D &fn, int iter) {
   float64 l2loc = 0.;
   #if defined( ENABLE_OPENACC )
     #pragma acc data present(fn)
-    #pragma acc parallel loop collapse(4) reduction(+:l2loc)
+    #pragma acc parallel loop independent collapse(3) reduction(+:l2loc)
   #else
     #pragma omp parallel for collapse(3) reduction(+:l2loc)
   #endif 
   for(int ivy = nvy_min; ivy <= nvy_max; ivy++) {
     for(int ivx = nvx_min; ivx <= nvx_max; ivx++) {
       for(int iy = ny_min; iy <= ny_max; iy++) {
+        LOOP_SIMD
         for(int ix = nx_min; ix <= nx_max; ix++) {
           l2loc += fn(ix, iy, ivx, ivy) * fn(ix, iy, ivx, ivy);
         }

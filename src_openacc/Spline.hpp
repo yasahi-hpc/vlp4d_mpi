@@ -182,7 +182,7 @@ namespace Spline {
       const int i1start = n1_min + HALO_PTS - 2;
       const int i1end   = n1_max - HALO_PTS + 1;
       #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(2) 
+      #pragma acc parallel loop independent collapse(2)
       for(int i2=n2_min; i2 < n2_max; i2++) {
         for(int i3=n3_min; i3 < n3_max; i3++) {
           const float64 alpha = sqrt3 - 2;
