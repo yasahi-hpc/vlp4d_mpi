@@ -26,24 +26,14 @@ int main(int argc, char *argv[]) {
   int iter = 0;
 
   timers[Total]->begin();
-  timers[TimerEnum::Field]->begin();
   field_rho(&conf, fn, ef);
-  timers[TimerEnum::Field]->end();
-
-  timers[TimerEnum::AllReduce]->begin();
   field_reduce(&conf, ef);
-  timers[TimerEnum::AllReduce]->end();
-
-  timers[TimerEnum::Fourier]->begin();
   field_poisson(&conf, ef, dg, iter);
-  timers[TimerEnum::Fourier]->end();
-
-  timers[Diag]->begin();
   dg->computeL2norm(&conf, fn, iter);
-  timers[Diag]->end();
 
   // Main time step loop
   while(iter < conf.dom_.nbiter_) {
+    timers[MainLoop]->begin();
     if(comm.master()) {
       printf("iter %d\n", iter);
     }
@@ -51,6 +41,7 @@ int main(int argc, char *argv[]) {
     iter++;
     onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);
     fn.swap(fnp1);
+    timers[MainLoop]->end();
   }
   timers[Total]->end();
 

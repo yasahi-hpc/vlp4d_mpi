@@ -35,6 +35,7 @@ public:
 };
 
 enum TimerEnum : int {Total,
+                      MainLoop,
                       pack,
                       comm,
                       unpack,
@@ -52,6 +53,7 @@ static void defineTimers(std::vector<Timer*> &timers) {
   // Set timers
   timers.resize(Nb_timers);
   timers[Total]                       = new Timer("total");
+  timers[MainLoop]                    = new Timer("MainLoop");
   timers[TimerEnum::pack]             = new Timer("pack");
   timers[TimerEnum::comm]             = new Timer("comm");
   timers[TimerEnum::unpack]           = new Timer("unpack");
