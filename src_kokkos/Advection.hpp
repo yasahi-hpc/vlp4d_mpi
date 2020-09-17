@@ -248,8 +248,13 @@ namespace Advection {
         const float64 ystar = y - depy;
         float64 ftmp = 0;
 
-        auto access_error = scatter_error_.access();
-        access_error(0) += interp_2D(tmp2d, xstar, ystar, ftmp);
+        #if defined(NO_ERROR_CHECK)
+          int err = 0;
+          err += interp_2D(tmp2d, xstar, ystar, ftmp);
+        #else
+          auto access_error = scatter_error_.access();
+          access_error(0) += interp_2D(tmp2d, xstar, ystar, ftmp);
+        #endif
         fn_(ix, iy, ivx, ivy) = ftmp;
       }
     #endif
@@ -452,14 +457,16 @@ namespace Advection {
     #else
       KOKKOS_INLINE_FUNCTION
       void operator()(const int ix, const int iy, const int ivx, const int ivy) const {
-        auto access_error = scatter_error_.access();
         float64 xstar[4];
         int indices[4] = {ix, iy, ivx, ivy};
         computeFeet(xstar, indices);
 
-        for(int j = 0; j < 4; j++) {
-          access_error(0) += (xstar[j] < locrxmindx_[j] || xstar[j] > locrxmaxdx_[j]);
-        }
+        #if ! defined(NO_ERROR_CHECK)
+          auto access_error = scatter_error_.access();
+          for(int j = 0; j < 4; j++) {
+            access_error(0) += (xstar[j] < locrxmindx_[j] || xstar[j] > locrxmaxdx_[j]);
+          }
+        #endif
 
         fn_(ix, iy, ivx, ivy) = interp_4D(fn_tmp_, xstar);
       }
@@ -489,6 +496,8 @@ namespace Advection {
       int err = 0;
       Kokkos::parallel_reduce("advect_2d", advect_2d_policy4d, blocked_advect_2D_xy_functor(conf, fn, fn_tmp, dt, scatter_error), err);
       testError(err);
+    #elif defined(NO_ERROR_CHECK)
+      Kokkos::parallel_for("advect_2d", advect_2d_policy4d, blocked_advect_2D_xy_functor(conf, fn, fn_tmp, dt, scatter_error));
     #else
       Kokkos::parallel_for("advect_2d", advect_2d_policy4d, blocked_advect_2D_xy_functor(conf, fn, fn_tmp, dt, scatter_error));
       Kokkos::Experimental::contribute(error, scatter_error);
@@ -516,6 +525,8 @@ namespace Advection {
       int err = 0;
       Kokkos::parallel_reduce("advect_4d", advect_4d_policy4d, advect_4D_functor(conf, ef, fn, tmp_fn, dt, scatter_error), err);
       testError(err);
+    #elif defined(NO_ERROR_CHECK)
+      Kokkos::parallel_for("advect_4d", advect_4d_policy4d, advect_4D_functor(conf, ef, fn, tmp_fn, dt, scatter_error));
     #else
       Kokkos::parallel_for("advect_4d", advect_4d_policy4d, advect_4D_functor(conf, ef, fn, tmp_fn, dt, scatter_error));
       Kokkos::Experimental::contribute(error, scatter_error);

@@ -8,45 +8,53 @@ default: build
 
 # Nvidia TeslaP100 on Tsubame3.0 (Tokyo Tech, Japan)
 ifneq (,$(findstring p100,$(KOKKOS_DEVICES)))
-CXX = ${KOKKOS_PATH}/bin/nvcc_wrapper
-CXXFLAGS = -O3
-ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
-  # enable auto-tuning against tile sizes
-  CXXFLAGS += -DTILE_SIZE_TUNING
-endif
-LINK = mpicxx
-LDFLAGS = -lcufft -lcublas
-EXE = vlp4d.tsubame3.0_p100_kokkos
-KOKKOS_DEVICES = "Cuda,OpenMP"
-KOKKOS_ARCH = "BDW,Pascal60"
-KOKKOS_CUDA_OPTIONS += "enable_lambda"
+  CXX = ${KOKKOS_PATH}/bin/nvcc_wrapper
+  CXXFLAGS = -O3
+  ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+    # enable auto-tuning against tile sizes
+    CXXFLAGS += -DTILE_SIZE_TUNING
+  endif
+  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
+  endif
+  LINK = mpicxx
+  LDFLAGS = -lcufft -lcublas
+  EXE = vlp4d.tsubame3.0_p100_kokkos
+  KOKKOS_DEVICES = "Cuda,OpenMP"
+  KOKKOS_ARCH = "BDW,Pascal60"
+  KOKKOS_CUDA_OPTIONS += "enable_lambda"
 endif
 
 # Intel Broadwell on Tsubame3.0 (Tokyo Tech, Japan)
 ifneq (,$(findstring bdw,$(KOKKOS_DEVICES)))
-CXX = icpc
-CXXFLAGS = -O3
-ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
-  # enable auto-tuning against tile sizes
-  CXXFLAGS += -DTILE_SIZE_TUNING
-endif
-ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
-  # enable layout-tuning
-  CXXFLAGS += -DLAYOUT_LEFT
-endif
-ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
-  # disable scatter views and use parallel reduce for error check
-  CXXFLAGS += -DNO_SCATTER_VIEWS
-endif
-ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-  # enable layout-tuning
-  CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
-endif
-LINK = mpicxx
-LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
-EXE = vlp4d.tsubame3.0_bdw_kokkos
-KOKKOS_DEVICES = "OpenMP"
-KOKKOS_ARCH = "BDW"
+  CXX = icpc
+  CXXFLAGS = -O3
+  ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+    # enable auto-tuning against tile sizes
+    CXXFLAGS += -DTILE_SIZE_TUNING
+  endif
+  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT
+  endif
+  ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
+    # disable scatter views and use parallel reduce for error check
+    CXXFLAGS += -DNO_SCATTER_VIEWS
+  endif
+  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
+  endif
+  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
+  endif
+  LINK = mpicxx
+  LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
+  EXE = vlp4d.tsubame3.0_bdw_kokkos
+  KOKKOS_DEVICES = "OpenMP"
+  KOKKOS_ARCH = "BDW"
 endif
 
 # Intel Skylake on JFRS-1 (IFERC-CSC, Japan)
@@ -68,6 +76,10 @@ ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
     # enable layout-tuning
     CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
+  endif
+  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
   endif
   LINK = ${CXX}
   LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
@@ -96,6 +108,10 @@ ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
     # enable all the optimizations
     CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
   endif
+  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
+  endif
   LINK = ${CXX}
   LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -Kfast,openmp -lstdc++
   EXE = vlp4d.flow_a64fx_kokkos
@@ -118,22 +134,6 @@ EXE = vlp4d.summit_v100_kokkos
 KOKKOS_DEVICES = "Cuda,OpenMP"
 KOKKOS_ARCH = "Power9,Volta70"
 KOKKOS_CUDA_OPTIONS += "enable_lambda"
-endif
-
-# Intel Skylake on JFRS-1 (IFERC-CSC, Japan)
-ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
-KOKKOS_PATH = /home/asahiy/lib/kokkos
-CXX = CC
-CXXFLAGS = -O3
-ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
-  # enable auto-tuning against tile sizes
-  CXXFLAGS += -DTILE_SIZE_TUNING
-endif
-LINK = ${CXX}
-LDFLAGS = -lfftw3_threads -lfftw3
-EXE = vlp4d.jfrs1_skx_kokkos
-KOKKOS_DEVICES = "OpenMP"
-KOKKOS_ARCH = "SKX"
 endif
 
 ifneq (,$(findstring tx2,$(KOKKOS_DEVICES)))
