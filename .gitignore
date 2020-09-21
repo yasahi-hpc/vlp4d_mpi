@@ -3,12 +3,14 @@ src_kokkos/*.slo
 src_kokkos/*.lo
 src_kokkos/*.o
 src_kokkos/*.obj
+src_kokkos/*.lst
 
 # Compiled Object files for OpenACC/OpenMP
 src_openacc/*.slo
 src_openacc/*.lo
 src_openacc/*.o
 src_openacc/*.obj
+src_openacc/*.lst
 
 # Batch scripts and input data
 wk/*
