@@ -368,7 +368,7 @@ void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, R
   *dg = new Diags(conf);
 
   // Initialize distribution function with zeros
-  fn = RealOffsetView4D("fn", {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
+  Impl::fill(fn, 0);
   initcase(conf, fn);
 }
 
