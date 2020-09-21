@@ -331,8 +331,6 @@ void Distrib::bookHalo(Config *conf) {
     int32 size = (halo->xmax_[0] - halo->xmin_[0] + 1) * (halo->xmax_[1] - halo->xmin_[1] + 1) * (halo->xmax_[2] - halo->xmin_[2] + 1)
                * (halo->xmax_[3] - halo->xmin_[3] + 1);
     halo->size_ = size;
-    halo->buf_ = new float64[size];
-    bzero(halo->buf_, size * sizeof(float64)); // filled by 0
   }
 
   for(size_t i = 0; i < recv_list_.size(); i++) {
@@ -340,8 +338,6 @@ void Distrib::bookHalo(Config *conf) {
     int32 size = (halo->xmax_[0] - halo->xmin_[0] + 1) * (halo->xmax_[1] - halo->xmin_[1] + 1) * (halo->xmax_[2] - halo->xmin_[2] + 1)
                * (halo->xmax_[3] - halo->xmin_[3] + 1);
     halo->size_ = size;
-    halo->buf_ = new float64[size];
-    bzero(halo->buf_, size * sizeof(float64)); // filled by 0
   }
 
   // Set the PID of each halo's sender in 'slist''s components

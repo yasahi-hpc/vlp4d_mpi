@@ -617,7 +617,7 @@ public:
     mergeLists(conf, name, map_2D2flatten);
     if(name == "send") {
       // 2D Buffer is used only for send buffer [TO DO] delete this
-      buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
+      //buf_ = RealView2D(name + "_buffer", size_, nb_halos_);
       listBoundary(conf, name, map_2D2flatten);
     }
   }

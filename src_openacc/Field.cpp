@@ -9,24 +9,51 @@ void field_rho(Config *conf, RealView4D &fn, Efield *ef) {
   int nx_max = dom->local_nxmax_[0] + 1, ny_max = dom->local_nxmax_[1] + 1, nvx_max = dom->local_nxmax_[2] + 1, nvy_max = dom->local_nxmax_[3] + 1;
   float64 dvx = dom->dx_[2], dvy = dom->dx_[3];
 
-  #if defined( ENABLE_OPENACC )
-    #pragma acc data present(ef[0:1], ef->rho_loc_, fn)
-    #pragma acc parallel loop
-  #else
-    #pragma omp parallel for
-  #endif
-  for(int iy=ny_min; iy<ny_max; iy++) {
-    LOOP_SIMD
-    for(int ix=nx_min; ix<nx_max; ix++) {
-      float64 sum = 0.;
-      for(int ivy=nvy_min; ivy<nvy_max; ivy++) {
-        for(int ivx=nvx_min; ivx<nvx_max; ivx++) {
-          sum += fn(ix, iy, ivx, ivy);
+  #if defined( OPT_FUJITSU ) 
+    #if defined( ENABLE_OPENACC )
+      #pragma acc data present(ef[0:1], ef->rho_loc_, fn)
+      #pragma acc parallel loop
+    #else
+      #pragma omp parallel for
+    #endif
+    for(int iy=ny_min; iy<ny_max; iy++) {
+      for(int ix = nx_min; ix < nx_max; ix+=SIMD_WIDTH) {
+        float64 sum_vec[SIMD_WIDTH];
+        for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+          sum_vec[ivec] = 0.;
+        }
+        for(int ivy=nvy_min; ivy<nvy_max; ivy++) {
+          for(int ivx=nvx_min; ivx<nvx_max; ivx++) {
+            for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+              sum_vec[ivec] += fn(ix + ivec, iy, ivx, ivy);
+            }
+          }
+        }
+        for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+          ef->rho_loc_(ix + ivec, iy) = sum_vec[ivec] * dvx * dvy;
         }
       }
-      ef->rho_loc_(ix, iy) = sum * dvx * dvy;
     }
-  }
+  #else
+    #if defined( ENABLE_OPENACC )
+      #pragma acc data present(ef[0:1], ef->rho_loc_, fn)
+      #pragma acc parallel loop
+    #else
+      #pragma omp parallel for
+    #endif
+    for(int iy=ny_min; iy<ny_max; iy++) {
+      LOOP_SIMD
+      for(int ix=nx_min; ix<nx_max; ix++) {
+        float64 sum = 0.;
+        for(int ivy=nvy_min; ivy<nvy_max; ivy++) {
+          for(int ivx=nvx_min; ivx<nvx_max; ivx++) {
+            sum += fn(ix, iy, ivx, ivy);
+          }
+        }
+        ef->rho_loc_(ix, iy) = sum * dvx * dvy;
+      }
+    }
+  #endif
 }
 
 void field_reduce(Config *conf, Efield *ef) {

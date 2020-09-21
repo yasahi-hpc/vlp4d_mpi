@@ -409,7 +409,7 @@ namespace Advection {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-    advect_2d_xy_(Config *conf, RealView4D &fn, float64 dt) {
+    advect_2D_xy_(Config *conf, RealView4D &fn, float64 dt) {
     Domain *dom = &(conf->dom_);
     const float64 minPhyx  = dom->minPhy_[0];
     const float64 minPhyy  = dom->minPhy_[1];
