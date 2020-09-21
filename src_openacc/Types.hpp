@@ -8,8 +8,11 @@
 #if defined( ENABLE_OPENACC )
   #include <openacc.h>
   #define LOOP_SIMD _Pragma("acc loop vector independent")
+  #define SIMD_WIDTH 32
 #else
   #include <omp.h>
+  #define SIMD_WIDTH 8
+  //constexpr int SIMD_WIDTH = 8; // slower on A64FX
   
   #if defined(SIMD)
     #define LOOP_SIMD _Pragma("omp simd")
