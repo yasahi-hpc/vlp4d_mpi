@@ -19,11 +19,15 @@
 #include "Types.hpp"
 #include "Communication.hpp"
 #include "Spline.hpp"
-#include "Advection.hpp"
 #include "Config.hpp"
 #include "Timer.hpp"
 #include "Math.hpp"
 #include "Helper.hpp"
+#if defined( OPT_FUJITSU ) 
+  #include "Advection_A64FX.hpp"
+#else
+  #include "Advection.hpp"
+#endif
 
 void onetimestep(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1,
                  Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter);
