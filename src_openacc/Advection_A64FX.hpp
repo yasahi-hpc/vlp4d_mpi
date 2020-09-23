@@ -237,6 +237,127 @@ namespace Advection {
     #endif
   }
 
+  static inline void interp_4D_vec(RealView4D &tmp_fn, float64 xmin[DIMENSION], 
+                                   float64 inv_dx[DIMENSION], float64 xstar_vec[DIMENSION][SIMD_WIDTH], 
+                                   float64 ftmp1_vec[SIMD_WIDTH]) {
+    #ifdef LAG_ORDER
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        for(int j = 0; j < DIMENSION; j++) {
+          xstar_vec[j][ivec] = inv_dx[j] * (xstar_vec[j][ivec] - xmin[j]);
+        }
+      }
+      float64 coefx0_vec[LAG_PTS][SIMD_WIDTH];
+      float64 coefx1_vec[LAG_PTS][SIMD_WIDTH];
+      float64 coefx2_vec[LAG_PTS][SIMD_WIDTH];
+      float64 coefx3_vec[LAG_PTS][SIMD_WIDTH];
+      int ipos_vec[DIMENSION][SIMD_WIDTH];
+
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        float64 coefx0[LAG_PTS];
+        float64 coefx1[LAG_PTS];
+        float64 coefx2[LAG_PTS];
+        float64 coefx3[LAG_PTS];
+
+        ipos[0] = floor(xstar_vec[0][ivec]) - LAG_OFFSET;
+        ipos[1] = floor(xstar_vec[1][ivec]) - LAG_OFFSET;
+        ipos[2] = floor(xstar_vec[2][ivec]) - LAG_OFFSET;
+        ipos[3] = floor(xstar_vec[3][ivec]) - LAG_OFFSET;
+        lag_basis((xstar_vec[0][ivec] - ipos[0]), coefx0);
+        lag_basis((xstar_vec[1][ivec] - ipos[1]), coefx1);
+        lag_basis((xstar_vec[2][ivec] - ipos[2]), coefx2);
+        lag_basis((xstar_vec[3][ivec] - ipos[3]), coefx3);
+
+        for(int j = 0; j < DIMENSION; j++) {
+          ipos_vec[j][ivec] = ipos[j];
+        }
+         
+        for(int k = 0; k <= LAG_ORDER; k++) {
+          coefx0_vec[k][ivec] = coefx0[k];
+          coefx1_vec[k][ivec] = coefx1[k];
+          coefx2_vec[k][ivec] = coefx2[k];
+          coefx3_vec[k][ivec] = coefx3[k];
+        }
+      }
+
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        ftmp1_vec[ivec] = 0.;
+      }
+
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        for(int k3 = 0; k3 <= LAG_ORDER; k3++) {
+          for(int k2 = 0; k2 <= LAG_ORDER; k2++) {
+            float64 ftmp2 = 0.;
+
+            for(int k1 = 0; k1 <= LAG_ORDER; k1++) {
+              float64 ftmp3 = 0.;
+              const int idx_y  = ipos_vec[1][ivec] + k1;
+              const int idx_vx = ipos_vec[2][ivec] + k2;
+              const int idx_vy = ipos_vec[3][ivec] + k3;
+
+              for(int k0 = 0; k0 <= LAG_ORDER; k0++) {
+                const int idx_x = ipos_vec[0][ivec] + k0;
+                ftmp3 += coefx0_vec[k0][ivec] * tmp_fn(idx_x, idx_y, idx_vx, idx_vy);
+              }
+              ftmp2 += ftmp3 * coefx1_vec[k1][ivec];
+            }
+            ftmp1_vec[ivec] += ftmp2 * coefx2_vec[k2][ivec] * coefx3_vec[k3][ivec];
+          }
+        }
+      }
+    #else
+      //LAG_ORDER
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        for(int j = 0; j < DIMENSION; j++) {
+          xstar_vec[j][ivec] = inv_dx[j] * (xstar_vec[j][ivec] - xmin[j]);
+        }
+      }
+      float64 eta_vec[DIMENSION][DIMENSION][SIMD_WIDTH];
+      int ipos_vec[DIMENSION][SIMD_WIDTH];
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        for(int j = 0; j < DIMENSION; j++) {
+          const float64 xstar = xstar_vec[j][ivec];
+          const int ipos = floor(xstar);
+          ipos_vec[j][ivec] = ipos;
+     
+          const float64 wx = xstar - ipos;
+          const float64 etax3 = (1./6.) * wx * wx * wx;
+          const float64 etax0 = (1./6.) + 0.5 * wx * (wx - 1.) - etax3;
+          const float64 etax2 = wx + etax0 - 2. * etax3;
+          const float64 etax1 = 1. - etax0 - etax2 - etax3;
+          eta_vec[j][0][ivec] = etax0;
+          eta_vec[j][1][ivec] = etax1;
+          eta_vec[j][2][ivec] = etax2;
+          eta_vec[j][3][ivec] = etax3;
+        }
+      }
+      
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        ftmp1_vec[ivec] = 0.;
+      }
+
+      for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+        for(int k3 = 0; k3 <= 3; k3++) {
+          const int idx_vy = ipos_vec[3][ivec] + k3 - 1;
+          for(int k2 = 0; k2 <= 3; k2++) {
+            float64 ftmp2 = 0.;
+            const int idx_vx = ipos_vec[2][ivec] + k2 - 1;
+            for(int k1 = 0; k1 <= 3; k1++) {
+              float64 ftmp3 = 0.;
+              const int idx_y  = ipos_vec[1][ivec] + k1 - 1;
+              for(int k0 = 0; k0 <= 3; k0++) {
+                const int idx_x = ipos_vec[0][ivec] + k0 - 1;
+                ftmp3 += eta_vec[0][k0][ivec]
+                       * tmp_fn(idx_x, idx_y, idx_vx, idx_vy);
+              }
+              ftmp2 += ftmp3 * eta_vec[1][k1][ivec];
+            }
+            ftmp1_vec[ivec] += ftmp2 * eta_vec[2][k2][ivec] * eta_vec[3][k3][ivec];
+          }
+        }
+      }
+    #endif
+  }
+
   void advect_2D_xy(Config *conf, RealView4D &fn, float64 dt) {
     typedef typename RealView4D::layout_ array_layout;
     advect_2D_xy_<array_layout::value>(conf, fn, dt);
@@ -407,7 +528,7 @@ namespace Advection {
                   }
                 }
 
-                // This is the better
+                // This is better
                 for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
                   int ipos1 = ipos1_vec[ivec];
                   for(int jy = 0; jy <= 3; jy++) {
@@ -488,19 +609,10 @@ namespace Advection {
     Impl::deep_copy(fn_tmp, fn);
 
     int err = 0;
-    #if defined( ENABLE_OPENACC )
-      #pragma acc data present(fn, fn_tmp)
-      #pragma acc parallel loop collapse(2) reduction(+:err)
-    #else
-      #pragma omp parallel for collapse(2) reduction(+:err)
-    #endif
+    #pragma omp parallel for collapse(2) reduction(+:err)
     for(int ix = nx_min; ix < nx_max; ix++) {
       for(int iy = ny_min; iy < ny_max; iy++) {
-        #if defined( ENABLE_OPENACC )
-          #pragma acc loop independent
-        #endif
         for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
-          LOOP_SIMD
           for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
             const float64 x  = minPhyx  + ix  * dx;
             const float64 y  = minPhyy  + iy  * dy;
@@ -509,15 +621,74 @@ namespace Advection {
             const float64 depx = dt * vx;
             const float64 depy = dt * vy;
             const float64 xstar[2] = {x - depx, y - depy};
-            const int indices[2] = {ivx, ivy};
             float64 ftmp = 0;
-            #if defined(NO_ERROR_CHECK)
-              int tmp_err = 0;
-              tmp_err += interp_2D(fn_tmp, xstar, inv_dx, minPhy,
-                                   xmin, xmax, indices, ftmp);
+            #ifdef LAG_ORDER
+              #ifdef LAG_ODD
+                int ipos1 = floor((xstar[0] - minPhy[0]) * inv_dx[0]);
+                int ipos2 = floor((xstar[1] - minPhy[1]) * inv_dx[1]);
+              #else
+                int ipos1 = round((xstar[0] - minPhy[0]) * inv_dx[0]);
+                int ipos2 = round((xstar[1] - minPhy[1]) * inv_dx[1]);
+              #endif
+              const float64 d_prev1 = LAG_OFFSET + inv_dx[0] * (xstar[0] - (minPhy[0] + ipos1 * inv_dx[0]));
+              const float64 d_prev2 = LAG_OFFSET + inv_dx[1] * (xstar[1] - (minPhy[1] + ipos2 * inv_dx[1]));
+               
+              float64 coefx[LAG_PTS];
+              float64 coefy[LAG_PTS];
+              float64 ftmp = 0.;
+              
+              ipos1 -= LAG_OFFSET;
+              ipos2 -= LAG_OFFSET;
+              lag_basis(d_prev1, coefx);
+              lag_basis(d_prev2, coefy);
+              
+              if( (ipos1 < xmin[0] - HALO_PTS || ipos1 > xmax[0] + HALO_PTS - LAG_ORDER) ||
+                  (ipos2 < xmin[1] - HALO_PTS || ipos2 > xmax[1] + HALO_PTS - LAG_ORDER) ) {
+                #if ! defined(NO_ERROR_CHECK)
+                  err += 1;
+                #endif
+              } else {
+                for(int k2 = 0; k2 <= LAG_ORDER; k2++) {
+                  for(int k1 = 0; k1 <= LAG_ORDER; k1++) {
+                    ftmp += coefx[k1] * coefy[k2] * fn_tmp(ipos1 + k1, ipos2 + k2, ivx, ivy);
+                  }
+                }
+              }
             #else
-              err += interp_2D(fn_tmp, xstar, inv_dx, minPhy, 
-                               xmin, xmax, indices, ftmp);
+              const float64 fx = (xstar[0] - minPhy[0]) * inv_dx[0];
+              const float64 fy = (xstar[1] - minPhy[1]) * inv_dx[1];
+              const int ipos1 = floor(fx);
+              const int ipos2 = floor(fy);
+              const float64 wx = fx - static_cast<float64>(ipos1);
+              const float64 wy = fy - static_cast<float64>(ipos2);
+              
+              const float64 etax3 = (1./6.) * wx * wx * wx;
+              const float64 etax0 = (1./6.) + 0.5  * wx * (wx - 1.) - etax3;
+              const float64 etax2 = wx + etax0 - 2. * etax3;
+              const float64 etax1 = 1. - etax0 - etax2 - etax3;
+              const float64 etax[4] = {etax0, etax1, etax2, etax3};
+              
+              const float64 etay3 = (1./6.) * wy * wy * wy;
+              const float64 etay0 = (1./6.) + 0.5 * wy * (wy - 1.) - etay3;
+              const float64 etay2 = wy + etay0 - 2. * etay3;
+              const float64 etay1 = 1. - etay0 - etay2 - etay3;
+              const float64 etay[4] = {etay0, etay1, etay2, etay3};
+              
+              if( (ipos1 < xmin[0] - 1 || ipos1 > xmax[0]) ||
+                  (ipos2 < xmin[1] - 1 || ipos2 > xmax[1])
+                ) {
+                #if ! defined(NO_ERROR_CHECK)
+                  err += 1;
+                #endif
+              } else {
+                for(int jy = 0; jy <= 3; jy++) {
+                  float64 sum = 0.;
+                  for(int jx = 0; jx <= 3; jx++) {
+                    sum += etax[jx] *  fn_tmp(ipos1-1+jx, ipos2-1+jy, ivx, ivy);
+                  }
+                  ftmp += etay[jy] * sum;
+                }
+              }
             #endif
             fn(ix, iy, ivx, ivy) = ftmp;
           }
@@ -561,32 +732,90 @@ namespace Advection {
     int err = 0;
     Impl::deep_copy(tmp_fn, fn);
 
-    #if defined( ENABLE_OPENACC )
-      #pragma acc data present(fn, tmp_fn, ef[0:1], ef->ex_, ef->ey_)
-      #pragma acc parallel loop collapse(2) reduction(+:err)
-    #else
-      #pragma omp parallel for collapse(2) reduction(+:err)
-    #endif
+    #pragma omp parallel for collapse(2) reduction(+:err)
     for(int ivy = nvy_min; ivy < nvy_max; ivy++) {
       for(int ivx = nvx_min; ivx < nvx_max; ivx++) {
-        #if defined( ENABLE_OPENACC )
-          #pragma acc loop independent
-        #endif
         for(int iy = ny_min; iy < ny_max; iy++) {
-          LOOP_SIMD
-          for(int ix = nx_min; ix < nx_max; ix++) {
-            float64 xstar[DIMENSION];
-            int indices[4] = {ix, iy, ivx, ivy};
-            computeFeet(xstar, ef->ex_, ef->ey_, rxmin, rxwidth,
-                        dx, inv_dx, xmax, indices, dt);
+          for(int ix = nx_min; ix < nx_max; ix+=SIMD_WIDTH) {
+            const int s_nxmax = xmax[0];
+            const int s_nymax = xmax[1];
+            float64 xstar_vec[DIMENSION][SIMD_WIDTH];
+            float64 xtmp_vec[DIMENSION][SIMD_WIDTH];
+            const float64 y  = rxmin[1] + iy  * dx[1];
+            const float64 vx = rxmin[2] + ivx * dx[2];
+            const float64 vy = rxmin[3] + ivy * dx[3];
+            for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+              const float64 x  = rxmin[0] + (ix + ivec) * dx[0];
+              xtmp_vec[0][ivec] = x  - 0.5 * dt * vx;
+              xtmp_vec[1][ivec] = y  - 0.5 * dt * vy;
+              xtmp_vec[2][ivec] = vx - 0.5 * dt * ef->ex_(ix + ivec, iy);
+              xtmp_vec[3][ivec] = vy - 0.5 * dt * ef->ey_(ix + ivec, iy);
+            }
 
-            #if defined(NO_ERROR_CHECK)
-              for(int j = 0; j < DIMENSION; j++) {
-                err += (xstar[j] < locrxmindx[j] || xstar[j] > locrxmaxdx[j]);
+            float64 ftmp1_vec[SIMD_WIDTH], ftmp2_vec[SIMD_WIDTH];
+            int ipos_vec[2][SIMD_WIDTH];
+            float64 coefx_vec[2][3][SIMD_WIDTH];
+            for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+              ftmp1_vec[ivec] = 0., ftmp2_vec[ivec] = 0.;
+            }
+
+            for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+              int ipos[2];
+              float64 coefx[2][3];
+             
+              for(int j = 0; j <= 1; j++) {
+                xtmp_vec[j][ivec] = inv_dx[j] * (xtmp_vec[j][ivec] - rxmin[j]);
+                ipos[j] = round(xtmp_vec[j][ivec]) - 1;
+                const float64 posx = xtmp_vec[j][ivec] - ipos[j];
+                lag3_basis(posx, coefx[j]);
+              
+                ipos_vec[j][ivec] = ipos[j];
+                for(int k = 0; k <= 2; k++) {
+                  coefx_vec[j][k][ivec] = coefx[j][k];
+                }
+              }
+            }
+
+            for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+              int ipos1 = ipos_vec[0][ivec], ipos2 = ipos_vec[1][ivec];
+              for(int k1 = 0; k1 <= 2; k1++) {
+                const int idx_y = (s_nymax + ipos2 + k1) % s_nymax;
+                for(int k0 = 0; k0 <= 2; k0++) {
+                  const int idx_x = (s_nxmax + ipos1 + k0) % s_nxmax;
+                  ftmp1_vec[ivec] += coefx_vec[0][k0][ivec] * coefx_vec[1][k1][ivec] * ef->ex_(idx_x, idx_y);
+                  ftmp2_vec[ivec] += coefx_vec[0][k0][ivec] * coefx_vec[1][k1][ivec] * ef->ey_(idx_x, idx_y);
+                }
+              }
+            }
+
+            for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+              const float64 x    = rxmin[0] + (ix + ivec) * dx[0];
+              xtmp_vec[2][ivec]  = vx - 0.5 * dt * ftmp1_vec[ivec];
+              xtmp_vec[3][ivec]  = vy - 0.5 * dt * ftmp2_vec[ivec];
+              xtmp_vec[0][ivec]  = x  - 0.5 * dt * xtmp_vec[2][ivec];
+              xtmp_vec[1][ivec]  = y  - 0.5 * dt * xtmp_vec[3][ivec];
+              xstar_vec[0][ivec] = x - dt * xtmp_vec[2][ivec];
+              xstar_vec[1][ivec] = y - dt * xtmp_vec[3][ivec];
+              xstar_vec[2][ivec] = max(min(vx - dt * ftmp1_vec[ivec], rxmin[2] + rxwidth[2]), rxmin[2]);
+              xstar_vec[3][ivec] = max(min(vy - dt * ftmp2_vec[ivec], rxmin[3] + rxwidth[3]), rxmin[3]);
+            }
+
+            #if ! defined(NO_ERROR_CHECK)
+              for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+                float64 xstar[DIMENSION];
+                for(int j = 0; j < DIMENSION; j++) {
+                  xstar[j] = xstar_vec[j][ivec];
+                  err += (xstar[j] < locrxmindx[j] || xstar[j] > locrxmaxdx[j]);
+                }
               }
             #endif
 
-            fn(ix, iy, ivx, ivy) = interp_4D(tmp_fn, rxmin, inv_dx, xstar);
+            float64 fn_vec[SIMD_WIDTH];
+            interp_4D_vec(tmp_fn, rxmin, inv_dx, xstar_vec, fn_vec);
+             
+            for(int ivec = 0; ivec < SIMD_WIDTH; ivec++) {
+              fn(ix + ivec, iy, ivx, ivy) = fn_vec[ivec];
+            }
           }
         }
       }
