@@ -12,11 +12,12 @@
 #include "Tile_size_tuning.hpp"
 
 void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetView4D fnp1,
-                 Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter);
+                 Efield *ef, Diags *dg, Spline *spline, std::vector<Timer*> &timers, int iter);
 void onetimestep(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, 
-                 Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter);
+                 Efield *ef, Diags *dg, Spline *spline, std::vector<Timer*> &timers, int iter);
 
-void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter) {
+void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetView4D fnp1, 
+                 Efield *ef, Diags *dg, Spline *spline, std::vector<Timer*> &timers, int iter) {
   Domain *dom = &(conf->dom_);
 
   // Exchange halo of the local domain in order to perform
@@ -25,7 +26,7 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
   comm.exchangeHalo(conf, fn, timers);
 
   timers[Splinecoeff_xy]->begin();
-  Spline::computeCoeff_xy(conf, fn);
+  spline->computeCoeff_xy(conf, fn);
   Impl::deep_copy(fnp1, fn);
   timers[Splinecoeff_xy]->end();
 
@@ -46,7 +47,7 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
   timers[TimerEnum::Fourier]->end();
 
   timers[Splinecoeff_vxvy]->begin();
-  Spline::computeCoeff_vxvy(conf, fnp1);
+  spline->computeCoeff_vxvy(conf, fnp1);
   timers[Splinecoeff_vxvy]->end();
 
   timers[Advec4D]->begin();
@@ -69,14 +70,15 @@ void onetimestep(Config *conf, Distrib &comm, RealOffsetView4D fn, RealOffsetVie
   dg->computeL2norm(conf, fnp1, iter);
 
   if(iter % dom->ifreq_ == 0) {
-    if(dom->fxvx_) Advection::print_fxvx(conf, comm, fnp1, iter); // [May be done]
+    if(dom->fxvx_) Advection::print_fxvx(conf, comm, fnp1, iter);
     dg->save(conf, comm, iter);
   }
   Kokkos::fence();
   timers[Diag]->end();
 };
 
-void onetimestep(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter) {
+void onetimestep(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, 
+                 Efield *ef, Diags *dg, Spline *spline, std::vector<Timer*> &timers, int iter) {
   Domain *dom = &(conf->dom_);
 
   // Exchange halo of the local domain in order to perform
@@ -85,7 +87,8 @@ void onetimestep(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffset
   comm.exchangeHalo(conf, fn, timers);
 
   timers[Splinecoeff_xy]->begin();
-  Spline::computeCoeff_xy(conf, fn, tuning.bestTileSize("coeff_xy"));
+  spline->computeCoeff_xy(conf, fn, tuning.bestTileSize("coeff_xy"));
+  //Spline::computeCoeff_xy(conf, fn, tuning.bestTileSize("coeff_xy"));
   Impl::deep_copy(fnp1, fn);
   timers[Splinecoeff_xy]->end();
 
@@ -106,7 +109,8 @@ void onetimestep(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffset
   timers[TimerEnum::Fourier]->end();
 
   timers[Splinecoeff_vxvy]->begin();
-  Spline::computeCoeff_vxvy(conf, fnp1, tuning.bestTileSize("coeff_vxvy"));
+  spline->computeCoeff_vxvy(conf, fnp1, tuning.bestTileSize("coeff_vxvy"));
+  //Spline::computeCoeff_vxvy(conf, fnp1, tuning.bestTileSize("coeff_vxvy"));
   timers[Splinecoeff_vxvy]->end();
 
   timers[Advec4D]->begin();

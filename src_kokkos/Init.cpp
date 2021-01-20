@@ -328,7 +328,7 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealOffsetView4D halo_fn)
   }
 }
 
-void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers) {
+void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, Spline **spline, std::vector<Timer*> &timers) {
   Domain* dom = &conf->dom_; 
 
   import(file, conf);
@@ -362,10 +362,14 @@ void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, R
   timers[TimerEnum::comm]->reset();
   timers[TimerEnum::unpacking]->reset();
 
+  // allocate and initialize field solver
   *ef = new Efield(conf, {dom->nxmax_[0], dom->nxmax_[1]});
 
   // allocate and initialize diagnostics data structures
   *dg = new Diags(conf);
+
+  // allocated and initiallize spline helper
+  *spline = new Spline(conf);
 
   // Initialize distribution function with zeros
   Impl::fill(fn, 0);
@@ -379,8 +383,9 @@ void initValues(Config *conf, RealOffsetView4D &fn, RealOffsetView4D &fnp1) {
   initcase(conf, fn);
 }
 
-void finalize(Efield **ef, Diags **dg) {
+void finalize(Efield **ef, Diags **dg, Spline **spline) {
   // Store diagnostics
   delete *ef;
   delete *dg;
+  delete *spline;
 }

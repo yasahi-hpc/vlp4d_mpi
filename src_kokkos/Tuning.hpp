@@ -15,20 +15,21 @@
 #include <iomanip>
 #include <functional>
 
-void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, int iter);
-void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, int iter) {
+void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, Spline *spline, int iter);
+
+void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, Spline *spline, int iter) {
   const Domain *dom = &(conf->dom_);
   int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
   int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
 
   Impl::deep_copy(fnp1, fn);
   // Tuning for Spline_xy
-  auto spline_xy = std::bind(Spline::computeCoeff_xy, conf, fnp1, std::placeholders::_1);
+  auto spline_xy = std::bind(&Spline::computeCoeff_xy, spline, conf, fnp1, std::placeholders::_1);
   tuning.registerKernel("coeff_xy", {nvx_max+1-nvx_min, nvy_max+1-nvy_min, 1, 1});
   tuning.scan("coeff_xy", spline_xy, comm.rank());
 
   // Run Spline_xy
-  Spline::computeCoeff_xy(conf, fn);
+  spline->computeCoeff_xy(conf, fn);
   Impl::deep_copy(fnp1, fn);
 
   // Tuning for Adv2D
@@ -51,12 +52,12 @@ void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOff
 
   // Tuning for Spline_vxvy
   Impl::deep_copy(fnp1, fn);
-  auto spline_vxvy = std::bind(Spline::computeCoeff_vxvy, conf, fnp1, std::placeholders::_1);
+  auto spline_vxvy = std::bind(&Spline::computeCoeff_vxvy, spline, conf, fnp1, std::placeholders::_1);
   tuning.registerKernel("coeff_vxvy", {nx_max+1-nx_min, ny_max+1-ny_min, 1, 1});
   tuning.scan("coeff_vxvy", spline_vxvy, comm.rank());
 
   // Run Spline_vxvy
-  Spline::computeCoeff_vxvy(conf, fnp1);
+  spline->computeCoeff_vxvy(conf, fnp1);
 
   // Tuning for Adv4D
   auto adv4d = std::bind(Advection::advect_4D, conf, ef, fnp1, fn, dom->dt_, std::placeholders::_1);
