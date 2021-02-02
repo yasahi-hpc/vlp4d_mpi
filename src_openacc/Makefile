@@ -12,6 +12,17 @@ ifneq (,$(findstring v100_marconi,$(DEVICES)))
   TARGET   = vlp4d.m100_v100_openacc
 endif
 
+# Nvidia V100 on SGI8600 (JAEA, Japan)
+ifneq (,$(findstring v100_s86,$(DEVICES)))
+  CXX      = mpicxx
+  CXXFLAGS = -O3 -acc -gpu=cc70,cuda11.0 -Minfo=accel -Mcudalib=cufft,cublas -std=c++11 -DENABLE_OPENACC -DLAYOUT_LEFT
+  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+    CXXFLAGS += -DNO_ERROR_CHECK
+  endif
+  LDFLAGS  = -Mcudalib=cufft,cublas -acc -gpu=cc70,cuda11.0
+  TARGET   = vlp4d.s86_v100_openacc
+endif
+
 # Nvidia P100 on Tsubame3.0 (Tokyo Tech, Japan)
 ifneq (,$(findstring p100,$(DEVICES)))
   CXX      = mpicxx

@@ -9,6 +9,11 @@ elif ls *.tsubame3.0_bdw_kokkos > /dev/null 2>&1; then
   qsub -g jh200053 batch_scripts/sub_tsubame3.0_bdw_kokkos.sh
 elif ls *.tsubame3.0_bdw_openmp > /dev/null 2>&1; then
   qsub -g jh200053 batch_scripts/sub_tsubame3.0_bdw_omp.sh
+# S86 v100
+elif ls *.s86_v100_kokkos > /dev/null 2>&1; then
+  qsub batch_scripts/sub_s86_v100_kokkos.sh
+elif ls *.s86_v100_openacc > /dev/null 2>&1; then
+  qsub batch_scripts/sub_s86_v100_acc.sh
 # M100 v100
 elif ls *.m100_v100_kokkos > /dev/null 2>&1; then
   sbatch batch_scripts/sub_m100_v100_kokkos.sh
