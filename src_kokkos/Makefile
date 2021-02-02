@@ -6,6 +6,26 @@ vpath %.cpp $(sort $(dir $(SRC)))
 default: build
 	echo "Start Build"
 
+# Nvidia Tesla V100 on SGI8600 (JAEA, Japan)
+ifneq (,$(findstring v100_s86,$(KOKKOS_DEVICES)))
+  CXX = mpicxx
+  CXXFLAGS = -O3
+  ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+    # enable auto-tuning against tile sizes
+    CXXFLAGS += -DTILE_SIZE_TUNING
+  endif
+  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
+  endif
+  LINK = mpicxx
+  LDFLAGS = -lcufft -lcublas
+  EXE = vlp4d.s86_v100_kokkos
+  KOKKOS_DEVICES = "Cuda,OpenMP"
+  KOKKOS_ARCH = "SKX,VOLTA70"
+  KOKKOS_CUDA_OPTIONS += "enable_lambda"
+endif
+
 # Nvidia Tesla V100 on Marconi100 (Cineca, Italy)
 ifneq (,$(findstring v100_marconi,$(KOKKOS_DEVICES)))
   CXX = mpicxx
