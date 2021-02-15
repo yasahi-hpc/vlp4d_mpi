@@ -52,13 +52,14 @@ int main (int argc, char* argv[]) {
   {
     Config conf;
     RealOffsetView4D fn, fnp1;
+    RealOffsetView4D fn_tmp;
     Efield *ef = nullptr;
     Diags  *dg = nullptr;
     Spline *spline = nullptr;
 
     // Initialization
     if(comm.master()) printf("reading input file %s\n", parser.file_);
-    init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, &spline, timers);
+    init(parser.file_, &conf, comm, fn, fnp1, fn_tmp, &ef, &dg, &spline, timers);
     int iter = 0;
 
     if(comm.master()) {
@@ -79,7 +80,7 @@ int main (int argc, char* argv[]) {
 
       // Tuning solve the first step of onetimestep repeatedly
       TileSizeTuning tuning;
-      tileSizeTuning(&conf, comm, tuning, fn, fnp1, ef, dg, spline, iter);
+      tileSizeTuning(&conf, comm, tuning, fn, fnp1, fn_tmp, ef, dg, spline, iter);
 
       // After tuning init again
       initValues(&conf, fn, fnp1);
@@ -101,9 +102,9 @@ int main (int argc, char* argv[]) {
 
       iter++;
       #if defined( TILE_SIZE_TUNING )
-        onetimestep(&conf, comm, tuning, fn, fnp1, ef, dg, spline, timers, iter);
+        onetimestep(&conf, comm, tuning, fn, fnp1, fn_tmp, ef, dg, spline, timers, iter);
       #else
-        onetimestep(&conf, comm, fn, fnp1, ef, dg, spline, timers, iter);
+        onetimestep(&conf, comm, fn, fnp1, fn_tmp, ef, dg, spline, timers, iter);
       #endif
       Impl::swap(fn, fnp1);
       timers[MainLoop]->end();

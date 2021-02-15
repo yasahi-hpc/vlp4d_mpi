@@ -14,6 +14,10 @@ ifneq (,$(findstring v100_marconi,$(KOKKOS_DEVICES)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
+  ifneq (,$(findstring BUFFER,$(OPTIMIZATION)))
+    # enable auto-tuning against tile sizes
+    CXXFLAGS += -DLONG_ENOUGH_BUFFER
+  endif
   ifneq (,$(findstring ALL,$(OPTIMIZATION)))
     # enable layout-tuning
     CXXFLAGS += -DTILE_SIZE_TUNING -DNO_ERROR_CHECK

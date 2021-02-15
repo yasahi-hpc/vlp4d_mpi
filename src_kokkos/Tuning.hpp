@@ -15,9 +15,9 @@
 #include <iomanip>
 #include <functional>
 
-void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, Spline *spline, int iter);
+void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, RealOffsetView4D fn_tmp, Efield *ef, Diags *dg, Spline *spline, int iter);
 
-void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, Efield *ef, Diags *dg, Spline *spline, int iter) {
+void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOffsetView4D fn, RealOffsetView4D fnp1, RealOffsetView4D fn_tmp, Efield *ef, Diags *dg, Spline *spline, int iter) {
   const Domain *dom = &(conf->dom_);
   int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
   int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
@@ -30,15 +30,15 @@ void tileSizeTuning(Config *conf, Distrib &comm, TileSizeTuning &tuning, RealOff
 
   // Run Spline_xy
   spline->computeCoeff_xy(conf, fn);
-  Impl::deep_copy(fnp1, fn);
+  Impl::deep_copy(fnp1, fn_tmp, fn);
 
   // Tuning for Adv2D
-  auto adv2d = std::bind(Advection::advect_2D_xy, conf, fnp1, dom->dt_*0.5, std::placeholders::_1);
+  auto adv2d = std::bind(Advection::advect_2D_xy, conf, fnp1, fn_tmp, dom->dt_*0.5, std::placeholders::_1);
   tuning.registerKernel("Adv2D", {nx_max+1-nx_min, ny_max+1-ny_min, nvx_max+1-nvx_min, nvy_max+1-nvy_min});
   tuning.scan("Adv2D", adv2d, comm.rank());
 
   // Run Adv2D
-  Advection::advect_2D_xy(conf, fn, 0.5 * dom->dt_);
+  Advection::advect_2D_xy(conf, fn, fn_tmp, 0.5 * dom->dt_);
 
   // Tuning for field_rho
   auto integral = std::bind(field_rho, conf, fn, ef, std::placeholders::_1);

@@ -26,6 +26,8 @@ template <unsigned ND> using shape_t = std::array<int, ND>;
 
 typedef Kokkos::DefaultExecutionSpace execution_space;
 
+#define LONG_WIDTH 256
+
 #if defined ( LAYOUT_LEFT )
   // For layout optimization and layout left
   template <typename T> using View1D = Kokkos::View<T*, execution_space>;
