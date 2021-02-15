@@ -31,6 +31,7 @@
 #include "Timestep.hpp"
 #include "Tuning.hpp"
 #include "Timer.hpp"
+#include "Spline.hpp"
 
 int main (int argc, char* argv[]) {
   Parser parser(argc, argv);
@@ -53,10 +54,11 @@ int main (int argc, char* argv[]) {
     RealOffsetView4D fn, fnp1;
     Efield *ef = nullptr;
     Diags  *dg = nullptr;
+    Spline *spline = nullptr;
 
     // Initialization
     if(comm.master()) printf("reading input file %s\n", parser.file_);
-    init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers);
+    init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, &spline, timers);
     int iter = 0;
 
     if(comm.master()) {
@@ -77,7 +79,7 @@ int main (int argc, char* argv[]) {
 
       // Tuning solve the first step of onetimestep repeatedly
       TileSizeTuning tuning;
-      tileSizeTuning(&conf, comm, tuning, fn, fnp1, ef, dg, iter);
+      tileSizeTuning(&conf, comm, tuning, fn, fnp1, ef, dg, spline, iter);
 
       // After tuning init again
       initValues(&conf, fn, fnp1);
@@ -99,16 +101,16 @@ int main (int argc, char* argv[]) {
 
       iter++;
       #if defined( TILE_SIZE_TUNING )
-        onetimestep(&conf, comm, tuning, fn, fnp1, ef, dg, timers, iter);
+        onetimestep(&conf, comm, tuning, fn, fnp1, ef, dg, spline, timers, iter);
       #else
-        onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);
+        onetimestep(&conf, comm, fn, fnp1, ef, dg, spline, timers, iter);
       #endif
       Impl::swap(fn, fnp1);
       timers[MainLoop]->end();
     }
     Kokkos::fence();
     timers[Total]->end();
-    finalize(&ef, &dg);
+    finalize(&ef, &dg, &spline);
     comm.cleanup();
   }
   Kokkos::finalize();
