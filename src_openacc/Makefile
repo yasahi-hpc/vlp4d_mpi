@@ -5,8 +5,11 @@ DEVICES = $(DEVICE)
 ifneq (,$(findstring v100_marconi,$(DEVICES)))
   CXX      = mpicxx
   CXXFLAGS = -O3 -ta=nvidia:cc70 -Minfo=accel -Mcudalib=cufft,cublas -std=c++11 -DENABLE_OPENACC -DLAYOUT_LEFT
+  ifneq (,$(findstring BUFFER,$(OPTIMIZATION)))
+    CXXFLAGS += -DLONG_ENOUGH_BUFFER
+  endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    CXXFLAGS += -DNO_ERROR_CHECK
+    CXXFLAGS += -DNO_ERROR_CHECK -DLONG_ENOUGH_BUFFER
   endif
   LDFLAGS  = -Mcudalib=cufft,cublas -ta=nvidia:cc70 -acc
   TARGET   = vlp4d.m100_v100_openacc

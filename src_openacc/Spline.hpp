@@ -7,36 +7,34 @@
 
 namespace Spline {
   // prototypes
-  void computeCoeff_xy(Config *conf, RealView4D &fn);
-  void computeCoeff_vxvy(Config *conf, RealView4D &fn);
+  void computeCoeff_xy(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn);
+  void computeCoeff_vxvy(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn);
 
   // Internal functions
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutLeft>>::value, void>::type
-  computeCoeff_xy_(Config *conf, RealView4D &fn);
+  computeCoeff_xy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn);
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  computeCoeff_xy_(Config *conf, RealView4D &fn);
+  computeCoeff_xy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn);
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutLeft>>::value, void>::type
-  computeCoeff_vxvy_(Config *conf, RealView4D &fn);
+  computeCoeff_vxvy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn);
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  computeCoeff_vxvy_(Config *conf, RealView4D &fn);
+  computeCoeff_vxvy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn);
 
   // Declaration
-  void computeCoeff_xy(Config *conf, RealView4D &fn) {
-    typedef typename RealView4D::layout_ array_layout;
-    computeCoeff_xy_<array_layout::value>(conf, fn);
+  void computeCoeff_xy(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn) {
+    computeCoeff_xy_<array_layout::value>(conf, transpose, fn);
   }
 
-  void computeCoeff_vxvy(Config *conf, RealView4D &fn) {
-    typedef typename RealView4D::layout_ array_layout;
-    computeCoeff_vxvy_<array_layout::value>(conf, fn);
+  void computeCoeff_vxvy(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn) {
+    computeCoeff_vxvy_<array_layout::value>(conf, transpose, fn);
   }
 
   // Common interface for OpenACC/OpenMP, fn_tmp is used as a buffer
@@ -62,14 +60,24 @@ namespace Spline {
         for(int i0=n0_min; i0 < n0_max; i0++) {
           const float64 alpha = sqrt3 - 2;
           const float64 beta  = sqrt3 * (1 - alpha * alpha);
+          #if defined( LONG_ENOUGH_BUFFER )
+            float64 tmp1d[LONG_WIDTH];
+          #endif
           // row update
           for(int i3 = i3start-1; i3 <= i3end + 1; i3++) {
 
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0, i1, i2start, i3) = (fn(i0, i1, i2start-1, i3) + fn(i0, i1, i2start, i3));
-            for(int nn = 1; i2start + nn <= i2end; nn++) {
-              fn_tmp(i0, i1, i2start + nn, i3) = fn(i0, i1, i2start + nn, i3) + alpha * fn_tmp(i0, i1, i2start + nn - 1, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0, i1, i2start-1, i3) + fn(i0, i1, i2start, i3));
+              for(int nn = 1; i2start + nn <= i2end; nn++) {
+                tmp1d[nn]= fn(i0, i1, i2start + nn, i3) + alpha * tmp1d[nn - 1];
+              }
+            #else
+              fn_tmp(i0, i1, i2start, i3) = (fn(i0, i1, i2start-1, i3) + fn(i0, i1, i2start, i3));
+              for(int nn = 1; i2start + nn <= i2end; nn++) {
+                fn_tmp(i0, i1, i2start + nn, i3) = fn(i0, i1, i2start + nn, i3) + alpha * fn_tmp(i0, i1, i2start + nn - 1, i3);
+              }
+            #endif
 
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0, i1, i2end + 1, i3) + fn(i0, i1, i2end, i3)); 
@@ -79,19 +87,33 @@ namespace Spline {
               alpha_k *= alpha;
             }
 
-            fn(i0, i1, i2end, i3) = fnend * sqrt3;
-            for(int nn = i2end - 1; nn >= i2start; nn--) {
-              fn(i0, i1, nn, i3) = beta * fn_tmp(i0, i1, nn, i3) + alpha * fn(i0, i1, nn + 1, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              fn(i0, i1, i2end, i3) = fnend * sqrt3;
+              for(int nn = i2end - 1; nn >= i2start; nn--) {
+                fn(i0, i1, nn, i3) = beta * tmp1d[nn-i2start] + alpha * fn(i0, i1, nn + 1, i3);
+              }
+            #else
+              fn(i0, i1, i2end, i3) = fnend * sqrt3;
+              for(int nn = i2end - 1; nn >= i2start; nn--) {
+                fn(i0, i1, nn, i3) = beta * fn_tmp(i0, i1, nn, i3) + alpha * fn(i0, i1, nn + 1, i3);
+              }
+            #endif
           }
 
           // col update
           for(int i2 = i2start; i2 <= i2end; i2++) {
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0, i1, i2, i3start) = (fn(i0, i1, i2, i3start-1) + fn(i0, i1, i2, i3start));
-            for(int nn = 1; i3start + nn <= i3end; nn++) {
-              fn_tmp(i0, i1, i2, i3start + nn) = fn(i0, i1, i2, i3start + nn) + alpha * fn_tmp(i0, i1, i2, i3start + nn - 1);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0, i1, i2, i3start-1) + fn(i0, i1, i2, i3start));
+              for(int nn = 1; i3start + nn <= i3end; nn++) {
+                tmp1d[nn] = fn(i0, i1, i2, i3start + nn) + alpha * tmp1d[nn - 1];
+              }
+            #else
+              fn_tmp(i0, i1, i2, i3start) = (fn(i0, i1, i2, i3start-1) + fn(i0, i1, i2, i3start));
+              for(int nn = 1; i3start + nn <= i3end; nn++) {
+                fn_tmp(i0, i1, i2, i3start + nn) = fn(i0, i1, i2, i3start + nn) + alpha * fn_tmp(i0, i1, i2, i3start + nn - 1);
+              }
+            #endif
 
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0, i1, i2, i3end + 1) + fn(i0, i1, i2, i3end)); 
@@ -102,9 +124,15 @@ namespace Spline {
             }
 
             fn(i0, i1, i2, i3end) = fnend * sqrt3;
-            for(int nn = i3end - 1; nn >= i3start; nn--) {
-              fn(i0, i1, i2, nn) = beta * fn_tmp(i0, i1, i2, nn) + alpha * fn(i0, i1, i2, nn + 1);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              for(int nn = i3end - 1; nn >= i3start; nn--) {
+                fn(i0, i1, i2, nn) = beta * tmp1d[nn-i3start] + alpha * fn(i0, i1, i2, nn + 1);
+              }
+            #else
+              for(int nn = i3end - 1; nn >= i3start; nn--) {
+                fn(i0, i1, i2, nn) = beta * fn_tmp(i0, i1, i2, nn) + alpha * fn(i0, i1, i2, nn + 1);
+              }
+            #endif
           }
         }
       }
@@ -118,13 +146,24 @@ namespace Spline {
         for(int i2=n2_min; i2 < n2_max; i2++) {
           const float64 alpha = sqrt3 - 2;
           const float64 beta  = sqrt3 * (1 - alpha * alpha);
+          #if defined( LONG_ENOUGH_BUFFER )
+            float64 tmp1d[LONG_WIDTH];
+          #endif
+
           // row update
           for(int i1 = i1start-1; i1 <= i1end + 1; i1++) {
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0start, i1, i2, i3) = (fn(i0start-1, i1, i2, i3) + fn(i0start, i1, i2, i3));
-            for(int nn = 1; i0start + nn <= i0end; nn++) {
-              fn_tmp(i0start+nn, i1, i2, i3) = fn(i0start + nn, i1, i2, i3) + alpha * fn_tmp(i0start + nn - 1, i1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0start-1, i1, i2, i3) + fn(i0start, i1, i2, i3));
+              for(int nn = 1; i0start + nn <= i0end; nn++) {
+                tmp1d[nn] = fn(i0start + nn, i1, i2, i3) + alpha * tmp1d[nn-1];
+              }
+            #else
+              fn_tmp(i0start, i1, i2, i3) = (fn(i0start-1, i1, i2, i3) + fn(i0start, i1, i2, i3));
+              for(int nn = 1; i0start + nn <= i0end; nn++) {
+                fn_tmp(i0start+nn, i1, i2, i3) = fn(i0start + nn, i1, i2, i3) + alpha * fn_tmp(i0start + nn - 1, i1, i2, i3);
+              }
+            #endif
              
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0end+1, i1, i2, i3) + fn(i0end, i1, i2, i3));
@@ -135,18 +174,31 @@ namespace Spline {
             }
             
             fn(i0end, i1, i2, i3) = fnend * sqrt3;
-            for(int nn = i0end - 1; nn >= i0start; nn--) {
-              fn(nn, i1, i2, i3) = beta * fn_tmp(nn, i1, i2, i3) + alpha * fn(nn + 1, i1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              for(int nn = i0end - 1; nn >= i0start; nn--) {
+                fn(nn, i1, i2, i3) = beta * tmp1d[nn-i0start] + alpha * fn(nn + 1, i1, i2, i3);
+              }
+            #else
+              for(int nn = i0end - 1; nn >= i0start; nn--) {
+                fn(nn, i1, i2, i3) = beta * fn_tmp(nn, i1, i2, i3) + alpha * fn(nn + 1, i1, i2, i3);
+              }
+            #endif
           }
 
           // col update
           for(int i0 = i0start; i0 <= i0end; i0++) {
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0, i1start, i2, i3) = (fn(i0, i1start-1, i2, i3) + fn(i0, i1start, i2, i3));
-            for(int nn = 1; i1start + nn <= i1end; nn++) {
-              fn_tmp(i0, i1start + nn, i2, i3) = fn(i0, i1start + nn, i2, i3) + alpha * fn_tmp(i0, i1start + nn - 1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0, i1start-1, i2, i3) + fn(i0, i1start, i2, i3));
+              for(int nn = 1; i1start + nn <= i1end; nn++) {
+                tmp1d[nn] = fn(i0, i1start + nn, i2, i3) + alpha * tmp1d[nn - 1];
+              }
+            #else
+              fn_tmp(i0, i1start, i2, i3) = (fn(i0, i1start-1, i2, i3) + fn(i0, i1start, i2, i3));
+              for(int nn = 1; i1start + nn <= i1end; nn++) {
+                fn_tmp(i0, i1start + nn, i2, i3) = fn(i0, i1start + nn, i2, i3) + alpha * fn_tmp(i0, i1start + nn - 1, i2, i3);
+              }
+            #endif
              
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0, i1end+1, i2, i3) + fn(i0, i1end, i2, i3));
@@ -157,9 +209,15 @@ namespace Spline {
             }
              
             fn(i0, i1end, i2, i3) = fnend * sqrt3;
-            for(int nn = i1end - 1; nn >= i1start; nn--) {
-              fn(i0, nn, i2, i3) = beta * fn_tmp(i0, nn, i2, i3) + alpha * fn(i0, nn + 1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              for(int nn = i1end - 1; nn >= i1start; nn--) {
+                fn(i0, nn, i2, i3) = beta * tmp1d[nn-i1start] + alpha * fn(i0, nn + 1, i2, i3);
+              }
+            #else
+              for(int nn = i1end - 1; nn >= i1start; nn--) {
+                fn(i0, nn, i2, i3) = beta * fn_tmp(i0, nn, i2, i3) + alpha * fn(i0, nn + 1, i2, i3);
+              }
+            #endif
           }
         }
       }
@@ -187,13 +245,23 @@ namespace Spline {
         for(int i3=n3_min; i3 < n3_max; i3++) {
           const float64 alpha = sqrt3 - 2;
           const float64 beta  = sqrt3 * (1 - alpha * alpha);
+          #if defined( LONG_ENOUGH_BUFFER )
+            float64 tmp1d[LONG_WIDTH];
+          #endif
           // row update
           for(int i1 = i1start-1; i1 <= i1end + 1; i1++) {
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0start, i1, i2, i3) = (fn(i0start-1, i1, i2, i3) + fn(i0start, i1, i2, i3));
-            for(int nn = 1; i0start + nn <= i0end; nn++) {
-              fn_tmp(i0start+nn, i1, i2, i3) = fn(i0start + nn, i1, i2, i3) + alpha * fn_tmp(i0start + nn - 1, i1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0start-1, i1, i2, i3) + fn(i0start, i1, i2, i3));
+              for(int nn = 1; i0start + nn <= i0end; nn++) {
+                tmp1d[nn] = fn(i0start + nn, i1, i2, i3) + alpha * tmp1d[nn - 1];
+              }
+            #else
+              fn_tmp(i0start, i1, i2, i3) = (fn(i0start-1, i1, i2, i3) + fn(i0start, i1, i2, i3));
+              for(int nn = 1; i0start + nn <= i0end; nn++) {
+                fn_tmp(i0start+nn, i1, i2, i3) = fn(i0start + nn, i1, i2, i3) + alpha * fn_tmp(i0start + nn - 1, i1, i2, i3);
+              }
+            #endif
              
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0end+1, i1, i2, i3) + fn(i0end, i1, i2, i3));
@@ -204,18 +272,31 @@ namespace Spline {
             }
             
             fn(i0end, i1, i2, i3) = fnend * sqrt3;
-            for(int nn = i0end - 1; nn >= i0start; nn--) {
-              fn(nn, i1, i2, i3) = beta * fn_tmp(nn, i1, i2, i3) + alpha * fn(nn + 1, i1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              for(int nn = i0end - 1; nn >= i0start; nn--) {
+                fn(nn, i1, i2, i3) = beta * tmp1d[nn-i0start] + alpha * fn(nn + 1, i1, i2, i3);
+              }
+            #else
+              for(int nn = i0end - 1; nn >= i0start; nn--) {
+                fn(nn, i1, i2, i3) = beta * fn_tmp(nn, i1, i2, i3) + alpha * fn(nn + 1, i1, i2, i3);
+              }
+            #endif
           }
 
           // col update
           for(int i0 = i0start; i0 <= i0end; i0++) {
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0, i1start, i2, i3) = (fn(i0, i1start-1, i2, i3) + fn(i0, i1start, i2, i3));
-            for(int nn = 1; i1start + nn <= i1end; nn++) {
-              fn_tmp(i0, i1start + nn, i2, i3) = fn(i0, i1start + nn, i2, i3) + alpha * fn_tmp(i0, i1start + nn - 1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0, i1start-1, i2, i3) + fn(i0, i1start, i2, i3));
+              for(int nn = 1; i1start + nn <= i1end; nn++) {
+                tmp1d[nn] = fn(i0, i1start + nn, i2, i3) + alpha * tmp1d[nn - 1];
+              }
+            #else
+              fn_tmp(i0, i1start, i2, i3) = (fn(i0, i1start-1, i2, i3) + fn(i0, i1start, i2, i3));
+              for(int nn = 1; i1start + nn <= i1end; nn++) {
+                fn_tmp(i0, i1start + nn, i2, i3) = fn(i0, i1start + nn, i2, i3) + alpha * fn_tmp(i0, i1start + nn - 1, i2, i3);
+              }
+            #endif
              
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0, i1end+1, i2, i3) + fn(i0, i1end, i2, i3));
@@ -226,9 +307,15 @@ namespace Spline {
             }
              
             fn(i0, i1end, i2, i3) = fnend * sqrt3;
-            for(int nn = i1end - 1; nn >= i1start; nn--) {
-              fn(i0, nn, i2, i3) = beta * fn_tmp(i0, nn, i2, i3) + alpha * fn(i0, nn + 1, i2, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              for(int nn = i1end - 1; nn >= i1start; nn--) {
+                fn(i0, nn, i2, i3) = beta * tmp1d[nn-i1start] + alpha * fn(i0, nn + 1, i2, i3);
+              }
+            #else
+              for(int nn = i1end - 1; nn >= i1start; nn--) {
+                fn(i0, nn, i2, i3) = beta * fn_tmp(i0, nn, i2, i3) + alpha * fn(i0, nn + 1, i2, i3);
+              }
+            #endif
           }
         }
       }
@@ -242,14 +329,23 @@ namespace Spline {
         for(int i0=n0_min; i0 < n0_max; i0++) {
           const float64 alpha = sqrt3 - 2;
           const float64 beta  = sqrt3 * (1 - alpha * alpha);
+          #if defined( LONG_ENOUGH_BUFFER )
+            float64 tmp1d[LONG_WIDTH];
+          #endif
           // row update
           for(int i3 = i3start-1; i3 <= i3end + 1; i3++) {
-
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0, i1, i2start, i3) = (fn(i0, i1, i2start-1, i3) + fn(i0, i1, i2start, i3));
-            for(int nn = 1; i2start + nn <= i2end; nn++) {
-              fn_tmp(i0, i1, i2start + nn, i3) = fn(i0, i1, i2start + nn, i3) + alpha * fn_tmp(i0, i1, i2start + nn - 1, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0, i1, i2start-1, i3) + fn(i0, i1, i2start, i3));
+              for(int nn = 1; i2start + nn <= i2end; nn++) {
+                tmp1d[nn] = fn(i0, i1, i2start + nn, i3) + alpha * tmp1d[nn - 1];
+              }
+            #else
+              fn_tmp(i0, i1, i2start, i3) = (fn(i0, i1, i2start-1, i3) + fn(i0, i1, i2start, i3));
+              for(int nn = 1; i2start + nn <= i2end; nn++) {
+                fn_tmp(i0, i1, i2start + nn, i3) = fn(i0, i1, i2start + nn, i3) + alpha * fn_tmp(i0, i1, i2start + nn - 1, i3);
+              }
+            #endif
 
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0, i1, i2end + 1, i3) + fn(i0, i1, i2end, i3)); 
@@ -260,18 +356,31 @@ namespace Spline {
             }
 
             fn(i0, i1, i2end, i3) = fnend * sqrt3;
-            for(int nn = i2end - 1; nn >= i2start; nn--) {
-              fn(i0, i1, nn, i3) = beta * fn_tmp(i0, i1, nn, i3) + alpha * fn(i0, i1, nn + 1, i3);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              for(int nn = i2end - 1; nn >= i2start; nn--) {
+                fn(i0, i1, nn, i3) = beta * tmp1d[nn-i2start] + alpha * fn(i0, i1, nn + 1, i3);
+              }
+            #else
+              for(int nn = i2end - 1; nn >= i2start; nn--) {
+                fn(i0, i1, nn, i3) = beta * fn_tmp(i0, i1, nn, i3) + alpha * fn(i0, i1, nn + 1, i3);
+              }
+            #endif
           }
 
           // col update
           for(int i2 = i2start; i2 <= i2end; i2++) {
             // fn[istart-1] stores the precomputed left sum
-            fn_tmp(i0, i1, i2, i3start) = (fn(i0, i1, i2, i3start-1) + fn(i0, i1, i2, i3start));
-            for(int nn = 1; i3start + nn <= i3end; nn++) {
-              fn_tmp(i0, i1, i2, i3start + nn) = fn(i0, i1, i2, i3start + nn) + alpha * fn_tmp(i0, i1, i2, i3start + nn - 1);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              tmp1d[0] = (fn(i0, i1, i2, i3start-1) + fn(i0, i1, i2, i3start));
+              for(int nn = 1; i3start + nn <= i3end; nn++) {
+                tmp1d[nn] = fn(i0, i1, i2, i3start + nn) + alpha * tmp1d[nn - 1];
+              }
+            #else
+              fn_tmp(i0, i1, i2, i3start) = (fn(i0, i1, i2, i3start-1) + fn(i0, i1, i2, i3start));
+              for(int nn = 1; i3start + nn <= i3end; nn++) {
+                fn_tmp(i0, i1, i2, i3start + nn) = fn(i0, i1, i2, i3start + nn) + alpha * fn_tmp(i0, i1, i2, i3start + nn - 1);
+              }
+            #endif
 
             // fn[iend+1] stores the precomputed right sum
             float64 fnend = (fn(i0, i1, i2, i3end + 1) + fn(i0, i1, i2, i3end)); 
@@ -282,9 +391,15 @@ namespace Spline {
             }
 
             fn(i0, i1, i2, i3end) = fnend * sqrt3;
-            for(int nn = i3end - 1; nn >= i3start; nn--) {
-              fn(i0, i1, i2, nn) = beta * fn_tmp(i0, i1, i2, nn) + alpha * fn(i0, i1, i2, nn + 1);
-            }
+            #if defined( LONG_ENOUGH_BUFFER )
+              for(int nn = i3end - 1; nn >= i3start; nn--) {
+                fn(i0, i1, i2, nn) = beta * tmp1d[nn-i3start] + alpha * fn(i0, i1, i2, nn + 1);
+              }
+            #else
+              for(int nn = i3end - 1; nn >= i3start; nn--) {
+                fn(i0, i1, i2, nn) = beta * fn_tmp(i0, i1, i2, nn) + alpha * fn(i0, i1, i2, nn + 1);
+              }
+            #endif
           }
         }
       }
@@ -296,7 +411,7 @@ namespace Spline {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutLeft>>::value, void>::type
-  computeCoeff_xy_(Config *conf, RealView4D &fn) {
+  computeCoeff_xy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn) {
     Domain *dom = &(conf->dom_);
 
     const int nx_min  = dom->local_nxmin_[0] - HALO_PTS; 
@@ -316,12 +431,12 @@ namespace Spline {
     #if defined( ENABLE_OPENACC )
       RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
+      //Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
       #pragma acc data present(fn, fn_trans, fn_tmp)
       {
-        transpose.forward(fn.data(), fn_trans.data());
+        transpose->forward(fn.data(), fn_trans.data());
         computeCoeff<array_layout::value>(fn_trans, fn_tmp);
-        transpose.backward(fn_trans.data(), fn.data());
+        transpose->backward(fn_trans.data(), fn.data());
       }
     #else
       RealView4D fn_tmp("fn_tmp", {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
@@ -333,7 +448,7 @@ namespace Spline {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  computeCoeff_xy_(Config *conf, RealView4D &fn) {
+  computeCoeff_xy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn) {
     Domain *dom = &(conf->dom_);
 
     const int nx_min  = dom->local_nxmin_[0] - HALO_PTS; 
@@ -356,10 +471,10 @@ namespace Spline {
     #else
       RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
-      transpose.forward(fn.data(), fn_trans.data());
+      //Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
+      transpose->forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
-      transpose.backward(fn_trans.data(), fn.data());
+      transpose->backward(fn_trans.data(), fn.data());
     #endif
   }
 
@@ -367,7 +482,7 @@ namespace Spline {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutLeft>>::value, void>::type
-  computeCoeff_vxvy_(Config *conf, RealView4D &fn) {
+  computeCoeff_vxvy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn) {
     Domain *dom = &(conf->dom_);
 
     const int nx_min = dom->local_nxmin_[0] - HALO_PTS; 
@@ -389,10 +504,10 @@ namespace Spline {
     #else
       RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
-      transpose.forward(fn.data(), fn_trans.data());
+      //Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
+      transpose->forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
-      transpose.backward(fn_trans.data(), fn.data());
+      transpose->backward(fn_trans.data(), fn.data());
     #endif
   }
 
@@ -400,7 +515,7 @@ namespace Spline {
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  computeCoeff_vxvy_(Config *conf, RealView4D &fn) {
+  computeCoeff_vxvy_(Config *conf, Impl::Transpose<float64, array_layout::value> *transpose, RealView4D &fn) {
     Domain *dom = &(conf->dom_);
 
     const int nx_min = dom->local_nxmin_[0] - HALO_PTS; 
@@ -419,10 +534,10 @@ namespace Spline {
     #if defined( ENABLE_OPENACC )
       RealView4D fn_trans("fn_trans", {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
       RealView4D fn_tmp("fn_tmp",   {nvx,nvy,nx,ny}, {nvx_min,nvy_min,nx_min,ny_min});
-      Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
-      transpose.forward(fn.data(), fn_trans.data());
+      //Impl::Transpose<float64, array_layout::value> transpose(nx*ny, nvx*nvy);
+      transpose->forward(fn.data(), fn_trans.data());
       computeCoeff<array_layout::value>(fn_trans, fn_tmp);
-      transpose.backward(fn_trans.data(), fn.data());
+      transpose->backward(fn_trans.data(), fn.data());
     #else
       RealView4D fn_tmp("fn_tmp",  {nx,ny,nvx,nvy}, {nx_min,ny_min,nvx_min,nvy_min});
       computeCoeff<array_layout::value>(fn, fn_tmp);

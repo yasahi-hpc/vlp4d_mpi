@@ -7,6 +7,7 @@
 #include "Parser.hpp"
 #include "Init.hpp"
 #include "Timestep.hpp"
+#include "Timestep.hpp"
 
 int main(int argc, char *argv[]) {
   Parser parser(argc, argv);
@@ -16,13 +17,14 @@ int main(int argc, char *argv[]) {
   RealView4D fn, fnp1;
   Efield *ef = nullptr;
   Diags  *dg = nullptr;
+  Impl::Transpose<float64, array_layout::value> *transpose = nullptr;
 
   std::vector<Timer*> timers;
   defineTimers(timers);
 
   // Initialization
   if(comm.master()) printf("reading input file %s\n", parser.file_);
-  init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, timers);
+  init(parser.file_, &conf, comm, fn, fnp1, &ef, &dg, &transpose, timers);
   int iter = 0;
 
   timers[Total]->begin();
@@ -39,11 +41,13 @@ int main(int argc, char *argv[]) {
     }
 
     iter++;
-    onetimestep(&conf, comm, fn, fnp1, ef, dg, timers, iter);
+    onetimestep(&conf, comm, fn, fnp1, ef, dg, transpose, timers, iter);
     fn.swap(fnp1);
     timers[MainLoop]->end();
   }
   timers[Total]->end();
+
+  finalize(&ef, &dg, &transpose);
 
   if(comm.master()) {
     printTimers(timers);

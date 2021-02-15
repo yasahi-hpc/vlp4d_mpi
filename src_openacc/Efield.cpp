@@ -46,6 +46,9 @@ Efield::Efield(Config *conf, shape_nd<2> dim)
 
 Efield::~Efield() {
   if(fft_ != nullptr) delete fft_;
+  #if defined( ENABLE_OPENACC )
+    #pragma acc exit data delete(this) // delete this pointer
+  #endif
 }
 
 void Efield::solve_poisson_fftw(float64 xmax, float64 ymax) {
