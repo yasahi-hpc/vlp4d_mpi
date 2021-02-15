@@ -139,7 +139,7 @@ public:
     void operator()(const int i0, const int i1) const {
       #if defined ( LAYOUT_LEFT )
         // For LayoutLeft specialization for CPU
-        auto sub_fn = Kokkos::Experimental::subview(fn_, Kokkos::ALL, Kokkos::ALL, i2+n2_min_, i3+n3_min_);
+        auto sub_fn = Kokkos::Experimental::subview(fn_, Kokkos::ALL, Kokkos::ALL, i0+n2_min_, i1+n3_min_);
       #else
         auto sub_fn = Kokkos::Experimental::subview(fn_, i0+n0_min_, i1+n1_min_, Kokkos::ALL, Kokkos::ALL);
       #endif

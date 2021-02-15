@@ -87,6 +87,7 @@ int main (int argc, char* argv[]) {
     #endif
 
     Kokkos::fence();
+    MPI_Barrier(MPI_COMM_WORLD);
     timers[Total]->begin();
 
     field_rho(&conf, fn, ef);
