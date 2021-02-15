@@ -30,10 +30,10 @@
 #endif
 
 void onetimestep(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1,
-                 Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter);
+                 Efield *ef, Diags *dg, Impl::Transpose<float64, array_layout::value> *transpose, std::vector<Timer*> &timers, int iter);
 
 void onetimestep(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1,
-                 Efield *ef, Diags *dg, std::vector<Timer*> &timers, int iter) {
+                 Efield *ef, Diags *dg, Impl::Transpose<float64, array_layout::value> *transpose, std::vector<Timer*> &timers, int iter) {
   Domain *dom = &(conf->dom_);
 
   // Exchange halo of the local domain in order to perform
@@ -42,7 +42,7 @@ void onetimestep(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1,
   comm.exchangeHalo(conf, fn, timers);
 
   timers[Splinecoeff_xy]->begin();
-  Spline::computeCoeff_xy(conf, fn);
+  Spline::computeCoeff_xy(conf, transpose, fn);
   Impl::deep_copy(fnp1, fn);
   timers[Splinecoeff_xy]->end();
 
@@ -63,7 +63,7 @@ void onetimestep(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1,
   timers[TimerEnum::Fourier]->end();
 
   timers[Splinecoeff_vxvy]->begin();
-  Spline::computeCoeff_vxvy(conf, fnp1);
+  Spline::computeCoeff_vxvy(conf, transpose, fnp1);
   timers[Splinecoeff_vxvy]->end();
 
   timers[Advec4D]->begin();

@@ -320,7 +320,7 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealView4D &halo_fn) {
   }
 }
 
-void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1, Efield **ef, Diags **dg, std::vector<Timer*> &timers) {
+void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1, Efield **ef, Diags **dg, Impl::Transpose<float64, array_layout::value> **transpose, std::vector<Timer*> &timers) {
   Domain* dom = &conf->dom_; 
   import(file, conf);
   if(comm.master()) print(conf);
@@ -364,6 +364,9 @@ void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealVie
   #if defined( ENABLE_OPENACC )
     #pragma acc enter data create(ef[0:1])
   #endif
+
+  // allocate
+  *transpose = new Impl::Transpose<float64, array_layout::value>(nx*ny, nvx*nvy);
   
   // Initialize distribution function
   fn = RealView4D("fn", shape_halo, nxmin_halo); // Needed for CPU to zero init
@@ -371,10 +374,11 @@ void init(const char *file, Config *conf, Distrib &comm, RealView4D &fn, RealVie
   initcase(conf, fn);
 }
 
-void finalize(Efield **ef, Diags **dg) {
+void finalize(Efield **ef, Diags **dg, Impl::Transpose<float64, array_layout::value> **transpose) {
   #if defined( ENABLE_OPENACC )
     #pragma acc exit data delete(ef[0:1])
   #endif
   delete *ef;
   delete *dg;
+  delete *transpose;
 }
