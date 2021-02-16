@@ -85,13 +85,13 @@ ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
-  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT
-  endif
   ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
     # disable scatter views and use parallel reduce for error check
     CXXFLAGS += -DNO_SCATTER_VIEWS
+  endif
+  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS
   endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
     # enable layout-tuning
@@ -116,13 +116,13 @@ ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
-  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT
-  endif
   ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
     # disable scatter views and use parallel reduce for error check
     CXXFLAGS += -DNO_SCATTER_VIEWS
+  endif
+  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+    # enable layout-tuning
+    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS
   endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
     # enable all the optimizations

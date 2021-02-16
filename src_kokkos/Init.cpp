@@ -328,7 +328,7 @@ void testcase_ptest_check(Config* conf, Distrib &comm, RealOffsetView4D halo_fn)
   }
 }
 
-void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, Efield **ef, Diags **dg, Spline **spline, std::vector<Timer*> &timers) {
+void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, RealOffsetView4D &fnp1, RealOffsetView4D &fn_tmp, Efield **ef, Diags **dg, Spline **spline, std::vector<Timer*> &timers) {
   Domain* dom = &conf->dom_; 
 
   import(file, conf);
@@ -350,6 +350,7 @@ void init(const char *file, Config *conf, Distrib &comm, RealOffsetView4D &fn, R
   int nxmax = nxmax_halo[0], nymax = nxmax_halo[1], nvxmax = nxmax_halo[2], nvymax = nxmax_halo[3];
   fn   = RealOffsetView4D("fn",   {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
   fnp1 = RealOffsetView4D("fnp1", {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
+  fn_tmp = RealOffsetView4D("fn_tmp", {nxmin, nxmax}, {nymin, nymax}, {nvxmin, nvxmax}, {nvymin, nvymax});
 
   comm.neighboursList(conf, fn);
   comm.bookHalo(conf);

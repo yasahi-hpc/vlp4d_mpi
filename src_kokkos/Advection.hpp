@@ -17,7 +17,7 @@
 
 namespace Advection {
 
-  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt, 
+  void advect_2D_xy(Config *conf, RealOffsetView4D fn, RealOffsetView4D fn_tmp, float64 dt,
                     const std::vector<int> &tiles={TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3});
   void advect_4D(Config *conf, Efield *ef, RealOffsetView4D fn, RealOffsetView4D tmp_fn, float64 dt, 
                  const std::vector<int> &tiles={TILE_SIZE0, TILE_SIZE1, TILE_SIZE2, TILE_SIZE3});
@@ -473,17 +473,11 @@ namespace Advection {
     #endif
   };
 
-  void advect_2D_xy(Config *conf, RealOffsetView4D fn, float64 dt, const std::vector<int> &tiles) {
-    const Domain *dom = &(conf->dom_);
+  void advect_2D_xy(Config *conf, RealOffsetView4D fn, RealOffsetView4D fn_tmp, float64 dt, const std::vector<int> &tiles) {
+    const Domain *dom = &(conf->dom_); 
 
     int nx_min = dom->local_nxmin_[0], ny_min = dom->local_nxmin_[1], nvx_min = dom->local_nxmin_[2], nvy_min = dom->local_nxmin_[3];
     int nx_max = dom->local_nxmax_[0], ny_max = dom->local_nxmax_[1], nvx_max = dom->local_nxmax_[2], nvy_max = dom->local_nxmax_[3];
-    RealOffsetView4D fn_tmp = RealOffsetView4D("fn_tmp",
-                                               {nx_min-HALO_PTS, nx_max+HALO_PTS},
-                                               {ny_min-HALO_PTS, ny_max+HALO_PTS},
-                                               {nvx_min-HALO_PTS, nvx_max+HALO_PTS},
-                                               {nvy_min-HALO_PTS, nvy_max+HALO_PTS});
-    Impl::deep_copy(fn_tmp, fn);
     View1D<int> error("error", 1);
     auto scatter_error = Kokkos::Experimental::create_scatter_view(error);
     const int TX = tiles[0], TY = tiles[1], TVX = tiles[2], TVY = tiles[3];

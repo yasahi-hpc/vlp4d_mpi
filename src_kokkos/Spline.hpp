@@ -49,8 +49,8 @@ public:
   struct spline_coef_2d {
     Config *conf_;
     RealOffsetView4D fn_;    // transposed to (ivx, ivy, ix, iy) for xy and (ix, iy, ivx, ivy) for vxvy
-    RealOffsetView4D tmp4d_; // Buffer accessed as subviews
     float64 sqrt3_;
+    float64 alpha_, beta_;
     int check_ = 1;
     int n0_min_;
     int n1_min_;
@@ -59,24 +59,16 @@ public:
   
     spline_coef_2d(Config *conf, RealOffsetView4D fn)
       : conf_(conf), fn_(fn) { 
-      sqrt3_ = sqrt(3); 
-      int n0_min = fn_.begin(0), n1_min = fn_.begin(1), n2_min = fn_.begin(2), n3_min = fn_.begin(3);
-      int n0_max = fn_.end(0)-1, n1_max = fn_.end(1)-1, n2_max = fn_.end(2)-1, n3_max = fn_.end(3) - 1;
-      tmp4d_ = RealOffsetView4D("tmp4d", 
-                                {n0_min, n0_max}, 
-                                {n1_min, n1_max}, 
-                                {n2_min, n2_max}, 
-                                {n3_min, n3_max});
+      sqrt3_ = sqrt(3);
+      alpha_ = sqrt(3) - 2;
+      beta_ = sqrt3_ * (1 - alpha_ * alpha_);
       n0_min_ = fn_.begin(0);
       n1_min_ = fn_.begin(1);
       n2_min_ = fn_.begin(2);
       n3_min_ = fn_.begin(3);
     }
   
-    ~spline_coef_2d() {
-      // Just to make sure tmp4d_ is deallocated
-      Impl::free(tmp4d_);
-    }
+    ~spline_coef_2d() { }
 
     // Internal functions
     /* 
@@ -86,29 +78,28 @@ public:
      */
     template <class ViewType>
     KOKKOS_INLINE_FUNCTION
-    void getSplineCoeff1D(ViewType &tmp1d, ViewType &fn1d, const float64 sqrt3) const {
+    void getSplineCoeff1D(ViewType &fn1d) const {
       const int istart = fn1d.begin(0) + HALO_PTS - 2;
       const int iend   = fn1d.end(0)   - HALO_PTS + 1;
-      const float64 alpha = sqrt3 - 2;
-      const float64 beta  = sqrt3 * (1 - alpha * alpha);
+      float64 tmp1d[LONG_WIDTH];
     
       // fn[istart-1] stores the precomputed left sum
-      tmp1d(istart) = fn1d(istart-1) + fn1d(istart);
+      tmp1d[0] = fn1d(istart-1) + fn1d(istart);
       for(int nn = 1; istart + nn <= iend; nn++) {
-        tmp1d(istart + nn) = fn1d(istart + nn) + alpha * tmp1d(istart + nn - 1);
+        tmp1d[nn] = fn1d(istart + nn) + alpha_ * tmp1d[nn - 1];
       }
        
       // fn[iend+1] stores the precomputed right sum
       float64 fnend = fn1d(iend + 1) + fn1d(iend);
-      float64 alpha_k = alpha;
+      float64 alpha_k = alpha_;
       for(int nn = 1; istart <= iend - nn; nn++) {
         fnend += fn1d(iend - nn) * alpha_k; //STDALGO
-        alpha_k *= alpha;
+        alpha_k *= alpha_;
       }
       
-      fn1d(iend) = fnend * sqrt3;
+      fn1d(iend) = fnend * sqrt3_;
       for(int nn = iend - 1; nn >= istart; nn--) {
-        fn1d(nn) = beta * tmp1d(nn) + alpha * fn1d(nn + 1);
+        fn1d(nn) = beta_ * tmp1d[nn-istart] + alpha_ * fn1d(nn + 1);
       }
     }
 
@@ -120,7 +111,7 @@ public:
      */
     template <class ViewType>
     KOKKOS_INLINE_FUNCTION
-    void getSplineCoeff2D(ViewType &tmp2d, ViewType &fn2d, float64 sqrt3, int check) const {
+    void getSplineCoeff2D(ViewType &fn2d, int check) const {
       const int ixstart = fn2d.begin(0) + HALO_PTS - 2;
       const int ixend   = fn2d.end(0)   - HALO_PTS + 1;
       const int iystart = fn2d.begin(1) + HALO_PTS - 2;
@@ -132,17 +123,15 @@ public:
       
       // Compute spline coefficients using precomputed parts
       for(int iy = iystart - 1; iy <= iyend + 1; iy++) {
-        auto row     = Kokkos::Experimental::subview(fn2d,  Kokkos::ALL, iy);
-        auto tmp_row = Kokkos::Experimental::subview(tmp2d, Kokkos::ALL, iy);
-        getSplineCoeff1D(tmp_row, row, sqrt3);
         // row updated
+        auto row = Kokkos::Experimental::subview(fn2d, Kokkos::ALL, iy);
+        getSplineCoeff1D(row);
       }
     
       for(int ix = ixstart; ix <= ixend; ix++) {
-        auto col     = Kokkos::Experimental::subview(fn2d,  ix, Kokkos::ALL);
-        auto tmp_col = Kokkos::Experimental::subview(tmp2d, ix, Kokkos::ALL);
-        getSplineCoeff1D(tmp_col, col, sqrt3);
         // col updated
+        auto col = Kokkos::Experimental::subview(fn2d, ix, Kokkos::ALL);
+        getSplineCoeff1D(col);
       }
     }
   
@@ -150,15 +139,13 @@ public:
     void operator()(const int i0, const int i1) const {
       #if defined ( LAYOUT_LEFT )
         // For LayoutLeft specialization for CPU
-        auto sub_tmp = Kokkos::Experimental::subview(tmp4d_, Kokkos::ALL, Kokkos::ALL, i2+n2_min_, i3+n3_min_);
-        auto sub_fn  = Kokkos::Experimental::subview(fn_,    Kokkos::ALL, Kokkos::ALL, i2+n2_min_, i3+n3_min_);
+        auto sub_fn = Kokkos::Experimental::subview(fn_, Kokkos::ALL, Kokkos::ALL, i0+n2_min_, i1+n3_min_);
       #else
-        auto sub_tmp = Kokkos::Experimental::subview(tmp4d_, i0+n0_min_, i1+n1_min_, Kokkos::ALL, Kokkos::ALL);
-        auto sub_fn  = Kokkos::Experimental::subview(fn_,    i0+n0_min_, i1+n1_min_, Kokkos::ALL, Kokkos::ALL);
+        auto sub_fn = Kokkos::Experimental::subview(fn_, i0+n0_min_, i1+n1_min_, Kokkos::ALL, Kokkos::ALL);
       #endif
   
       // 2D Spline interpolation
-      getSplineCoeff2D(sub_tmp, sub_fn, sqrt3_, check_);
+      getSplineCoeff2D(sub_fn, check_);
     }
   };
 
