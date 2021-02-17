@@ -61,9 +61,12 @@ endif
 ifneq (, $(findstring a64fx_flow,$(DEVICES)))
   #Fujitsu
   CXX = mpiFCCpx
-  CXXFLAGS = -O3 -g -std=c++11 -Kfast,openmp,optmsg=2 -Nlst=t -DLAYOUT_LEFT -Krestp=all -DOPT_FUJITSU
+  CXXFLAGS = -O3 -g -std=c++14 -Kfast,openmp,optmsg=2 -march=armv8.2-a+sve -Nlst=t -DLAYOUT_LEFT -Krestp=all -Kocl
   ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
     CXXFLAGS += -DSIMD
+  endif
+  ifneq (,$(findstring BUFFER,$(OPTIMIZATION)))
+    CXXFLAGS += -DLONG_ENOUGH_BUFFER -DSIMD
   endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
     CXXFLAGS += -DNO_ERROR_CHECK -DSIMD
@@ -78,6 +81,9 @@ ifneq (, $(findstring skx,$(DEVICES)))
   CXXFLAGS = -O3 -std=c++11 -qopenmp -xCORE-AVX512 -DLAYOUT_LEFT
   ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
     CXXFLAGS += -DSIMD
+  endif
+  ifneq (,$(findstring BUFFER,$(OPTIMIZATION)))
+    CXXFLAGS += -DLONG_ENOUGH_BUFFER -DSIMD
   endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
     CXXFLAGS += -DNO_ERROR_CHECK -DSIMD
