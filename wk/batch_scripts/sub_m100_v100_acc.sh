@@ -2,7 +2,7 @@
 #SBATCH -A FUSIO_jaPP-GYS
 #SBATCH -p m100_fua_prod
 #SBATCH --time 00:10:00     # format: HH:MM:SS
-#SBATCH --nodes=2           # 1 node
+#SBATCH --nodes=4           # 1 node
 #SBATCH --ntasks-per-node=4 # 2 MPI processes per node
 #SBATCH --cpus-per-task=32  
 #SBATCH --gres=gpu:4        # 1 gpus per node out of 4

@@ -282,32 +282,6 @@ namespace Advection {
         }
       #endif
     #else
-      KOKKOS_INLINE_FUNCTION
-      void operator()(const int ix, const int iy, const int ivx, const int ivy) const {
-        const float64 vx = minPhy_[2] + ivx * dx_[2];
-        const float64 vy = minPhy_[3] + ivy * dx_[3];
-        const float64 depx = dt_ * vx;
-        const float64 depy = dt_ * vy;
-
-        auto tmp2d = Kokkos::Experimental::subview(fn_tmp_, Kokkos::ALL, Kokkos::ALL, ivx, ivy);
-
-        const float64 x = minPhy_[0] + ix * dx_[0];
-        const float64 y = minPhy_[1] + iy * dx_[1];
-
-        const float64 xstar = x - depx;
-        const float64 ystar = y - depy;
-        float64 ftmp = 0;
-
-        #if defined(NO_ERROR_CHECK)
-          int err = 0;
-          err += interp_2D(tmp2d, xstar, ystar, ftmp);
-        #else
-          auto access_error = scatter_error_.access();
-          access_error(0) += interp_2D(tmp2d, xstar, ystar, ftmp);
-        #endif
-        fn_(ix, iy, ivx, ivy) = ftmp;
-      }
-
       #if defined(SIMD)
         KOKKOS_INLINE_FUNCTION
         void operator()(const int i0, const int i1, const int i2) const {
