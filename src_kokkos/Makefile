@@ -115,7 +115,7 @@ endif
 # Fujitsu A64FX on flow (Nagoya Univ, Japan)
 ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
   CXX = mpiFCCpx
-  CXXFLAGS = -O3 -Kfast,openmp -Krestp=all
+  CXXFLAGS = -O3 -Kfast,openmp -Krestp=all -Kocl
   ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
@@ -129,8 +129,8 @@ ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
     CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS
   endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    # enable all the optimizations
-    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
+    # enable SIMD optimization
+    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS -DSIMD -DSIMD_ADV4D -DFUJI
   endif
   ifneq (,$(findstring ALL,$(OPTIMIZATION)))
     # enable layout-tuning
