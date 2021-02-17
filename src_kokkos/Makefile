@@ -98,8 +98,8 @@ ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
     CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS
   endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
+    # enable SIMD optimization
+    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS -DSIMD -DSIMD_ADV4D
   endif
   ifneq (,$(findstring ALL,$(OPTIMIZATION)))
     # enable layout-tuning

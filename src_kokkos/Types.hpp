@@ -27,8 +27,10 @@ template <unsigned ND> using shape_t = std::array<int, ND>;
 typedef Kokkos::DefaultExecutionSpace execution_space;
 
 #if defined(SIMD)
+  #define LOOP_IVDEP _Pragma("ivdep")
   #define LOOP_SIMD _Pragma("omp simd")
 #else
+  #define LOOP_IVDEP
   #define LOOP_SIMD
 #endif
 
