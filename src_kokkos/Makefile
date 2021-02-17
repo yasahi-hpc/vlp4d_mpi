@@ -143,40 +143,6 @@ ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
   KOKKOS_ARCH = "A64FX"
 endif
 
-# Nvidia TeslaV100 on Summit (OLCF, US)
-ifneq (,$(findstring v100,$(KOKKOS_DEVICES)))
-KOKKOS_PATH = /ccs/home/yasahi/lib/kokkos
-CXX = ${KOKKOS_PATH}/bin/nvcc_wrapper
-CXXFLAGS = -O3
-ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
-  # enable auto-tuning against tile sizes
-  CXXFLAGS += -DTILE_SIZE_TUNING
-endif
-LINK = mpicxx
-LDFLAGS = -lcufft -lcublas
-EXE = vlp4d.summit_v100_kokkos
-KOKKOS_DEVICES = "Cuda,OpenMP"
-KOKKOS_ARCH = "Power9,Volta70"
-KOKKOS_CUDA_OPTIONS += "enable_lambda"
-endif
-
-ifneq (,$(findstring tx2,$(KOKKOS_DEVICES)))
-# Marvell Thunder X2 on CEA Computing Complex (CEA, France)
-KOKKOS_PATH = /ccc/home/cont002/qst/asahiy/lib/src/kokkos
-CXX=armclang++
-CXXFLAGS=-O3 -armpl
-ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
-  # enable auto-tuning against tile sizes
-  CXXFLAGS += -DTILE_SIZE_TUNING
-endif
-LINK = ${CXX}
-LDFLAGS=-armpl
-# Execution files
-EXE = vlp4d.ccc_tx2_kokkos
-KOKKOS_DEVICES = "OpenMP"
-KOKKOS_ARCH = "ARMv8-TX2"
-endif
-
 KOKKOS_SRC_PATH = ${KOKKOS_PATH}
 DEPFLAGS = -M
 
