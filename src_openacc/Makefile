@@ -63,13 +63,13 @@ ifneq (, $(findstring a64fx_flow,$(DEVICES)))
   CXX = mpiFCCpx
   CXXFLAGS = -O3 -g -std=c++14 -Kfast,openmp,optmsg=2 -march=armv8.2-a+sve -Nlst=t -DLAYOUT_LEFT -Krestp=all -Kocl
   ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
-    CXXFLAGS += -DSIMD
+    CXXFLAGS += -DSIMD -DFUJI
   endif
   ifneq (,$(findstring BUFFER,$(OPTIMIZATION)))
-    CXXFLAGS += -DLONG_ENOUGH_BUFFER -DSIMD
+    CXXFLAGS += -DLONG_ENOUGH_BUFFER -DSIMD -DFUJI
   endif
   ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    CXXFLAGS += -DNO_ERROR_CHECK -DSIMD
+    CXXFLAGS += -DNO_ERROR_CHECK -DSIMD -DFUJI
   endif
   LDFLAGS  = -Kfast,openmp -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstdc++
   TARGET   = vlp4d.flow_a64fx_openmp
