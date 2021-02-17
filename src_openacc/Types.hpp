@@ -15,7 +15,11 @@
   //constexpr int SIMD_WIDTH = 8; // slower on A64FX
   
   #if defined(SIMD)
-    #define LOOP_SIMD _Pragma("omp simd")
+    #if defined(FUJI)
+      #define LOOP_SIMD _Pragma("loop simd")
+    #else
+      #define LOOP_SIMD _Pragma("omp simd")
+    #endif
   #else
     #define LOOP_SIMD
   #endif

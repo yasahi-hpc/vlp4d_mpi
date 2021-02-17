@@ -1,13 +1,13 @@
 #!/bin/bash
-#PJM -L "node=2"
+#PJM -L "node=4"
 #PJM -L "rscunit=fx"
 #PJM -L "rscgrp=fx-small"
 #PJM -L "elapse=10:00"
-#PJM --mpi "proc=8"
+#PJM --mpi "proc=16"
 #PJM -s
                   
 module list
-module load tcs/1.2.25
+module load tcs/1.2.27
 module load fftw-tune
                        
 export OMP_NUM_THREADS=12

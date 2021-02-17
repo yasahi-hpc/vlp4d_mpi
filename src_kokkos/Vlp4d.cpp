@@ -95,8 +95,9 @@ int main (int argc, char* argv[]) {
     field_poisson(&conf, ef, dg, iter);
     dg->computeL2norm(&conf, fn, iter);
 
+    Kokkos::fence();
+    timers[MainLoop]->begin();
     while(iter <conf.dom_.nbiter_) {
-      timers[MainLoop]->begin();
       if(comm.master()) {
         printf("iter %d\n", iter);
       }
@@ -108,9 +109,9 @@ int main (int argc, char* argv[]) {
         onetimestep(&conf, comm, fn, fnp1, fn_tmp, ef, dg, spline, timers, iter);
       #endif
       Impl::swap(fn, fnp1);
-      timers[MainLoop]->end();
     }
     Kokkos::fence();
+    timers[MainLoop]->end();
     timers[Total]->end();
     finalize(&ef, &dg, &spline);
     comm.cleanup();
