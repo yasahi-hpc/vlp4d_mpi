@@ -29,13 +29,13 @@ a mixed OpenACC/OpenMP and Kokkos, where we suppress unnecessary duplications of
 # Test environments
 We have tested the code on the following environments. 
 - Nvidia Tesla p100 on Tsubame3.0 (Tokyo Tech, Japan)  
-Compilers (cuda/10.2.48, pgi19.1)
+Compilers: cuda/10.2.48 + openmpi3.1.4 (Kokkos), pgi19.1 + openmpi3.1.4 (OpenACC)
 
 - Nvidia Tesla v100 on Marconi100 (Cineca, Italy)  
-Compilers (cuda/10.2.48, pgi19.1)
+Compilers cuda/10.2 + spectrum_mpi10.3.1 (Kokkos), Nvidia HPC SDK 20.11-0 (OpenACC)
 
 - Intel Skylake on JFRS-1 (IFERC-CSC, Japan)  
-Compilers (intel19.0.0.117)
+Compilers (intel compiler 19.0.0.117)
 
 - Fujitsu A64FX on Flow (Nagoya Univ., Japan)  
 Compilers (Fujitsu compiler 1.2.27)
