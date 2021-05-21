@@ -10,18 +10,18 @@ default: build
 ifneq (,$(findstring v100_marconi,$(KOKKOS_DEVICES)))
   CXX = mpicxx
   CXXFLAGS = -O3
+
   ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
-  ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
+
+  # STEP 1 (SIMD)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
     # enable SIMD optimization
     CXXFLAGS += -DSIMD
   endif
-  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
-  endif
+
   LINK = mpicxx
   LDFLAGS = -lcufft -lcublas
   EXE = vlp4d.m100_v100_kokkos
@@ -34,18 +34,18 @@ endif
 ifneq (,$(findstring p100,$(KOKKOS_DEVICES)))
   CXX = ${KOKKOS_PATH}/bin/nvcc_wrapper
   CXXFLAGS = -O3
+
   ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
-  ifneq (,$(findstring SIMD,$(OPTIMIZATION)))
+
+  # STEP 1 (SIMD)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
     # enable SIMD optimization
     CXXFLAGS += -DSIMD
   endif
-  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
-  endif
+
   LINK = mpicxx
   LDFLAGS = -lcufft -lcublas
   EXE = vlp4d.tsubame3.0_p100_kokkos
@@ -58,26 +58,27 @@ endif
 ifneq (,$(findstring bdw,$(KOKKOS_DEVICES)))
   CXX = icpc
   CXXFLAGS = -O3
+
+  # disable scatter views and use parallel reduce for error check
+  CXXFLAGS += -DNO_SCATTER_VIEWS
+
   ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
-  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+
+  # STEP 1 (LayoutLeft)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
     # enable layout-tuning
     CXXFLAGS += -DLAYOUT_LEFT
   endif
-  ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
-    # disable scatter views and use parallel reduce for error check
-    CXXFLAGS += -DNO_SCATTER_VIEWS
+
+  # STEP 2 (LayoutLeft + SIMD)
+  ifneq (,$(findstring STEP2,$(OPTIMIZATION)))
+    # enable SIMD optimization
+    CXXFLAGS += -DLAYOUT_LEFT -DSIMD
   endif
-  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_SCATTER_VIEWS
-  endif
-  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
-  endif
+
   LINK = mpicxx
   LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
   EXE = vlp4d.tsubame3.0_bdw_kokkos
@@ -89,26 +90,27 @@ endif
 ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
   CXX = CC
   CXXFLAGS = -O3
+
+  # disable scatter views and use parallel reduce for error check
+  CXXFLAGS += -DNO_SCATTER_VIEWS
+
   ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
-  ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
-    # disable scatter views and use parallel reduce for error check
-    CXXFLAGS += -DNO_SCATTER_VIEWS
-  endif
-  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+
+  # STEP 1 (LayoutLeft)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
     # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS
+    CXXFLAGS += -DLAYOUT_LEFT
   endif
-  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+
+  # STEP 2 (LayoutLeft + SIMD)
+  ifneq (,$(findstring STEP2,$(OPTIMIZATION)))
     # enable SIMD optimization
-    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS -DSIMD -DSIMD_ADV4D
+    CXXFLAGS += -DLAYOUT_LEFT -DSIMD
   endif
-  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
-  endif
+
   LINK = ${CXX}
   LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
   EXE = vlp4d.jfrs1_skx_kokkos
@@ -116,33 +118,37 @@ ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
   KOKKOS_ARCH = "SKX"
 endif
 
-# Fujitsu A64FX on flow (Nagoya Univ, Japan)
-ifneq (,$(findstring a64fx_flow,$(KOKKOS_DEVICES)))
+# Fujitsu A64FX on Fugaku (Rkien, Japan) or Flow (Nagoya Univ, Japan)
+ifneq (,$(findstring a64fx,$(KOKKOS_DEVICES)))
   CXX = mpiFCCpx
   CXXFLAGS = -O3 -Kfast,openmp -Krestp=all -Kocl
-  ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
-    # enable auto-tuning against tile sizes
-    CXXFLAGS += -DTILE_SIZE_TUNING
-  endif
-  ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
-    # disable scatter views and use parallel reduce for error check
-    CXXFLAGS += -DNO_SCATTER_VIEWS
-  endif
-  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+
+  # disable scatter views and use parallel reduce for error check
+  CXXFLAGS += -DNO_SCATTER_VIEWS
+
+  # STEP 1 (LayoutLeft)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
     # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS
+    CXXFLAGS += -DLAYOUT_LEFT
   endif
-  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+
+  # STEP 2 (LayoutLeft + SIMD)
+  ifneq (,$(findstring STEP2,$(OPTIMIZATION)))
     # enable SIMD optimization
-    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS -DSIMD -DSIMD_ADV4D -DFUJI
+    CXXFLAGS += -DLAYOUT_LEFT -DSIMD -DFUJI
   endif
-  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
-  endif
+
   LINK = ${CXX}
   LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -Kfast,openmp -lstdc++
-  EXE = vlp4d.flow_a64fx_kokkos
+
+  # SVE enabled FFTW setting for Fugaku
+  ifneq (, $(findstring fugaku,$(DEVICE)))
+    FFTW_PATH = /home/apps/r/OSS_CN/fftw-3.3.8
+    CXXFLAGS += -I$(FFTW_PATH)/include
+    LDFLAGS += -I$(FFTW_PATH)/include -L$(FFTW_PATH)/lib64
+  endif
+
+  EXE = vlp4d.$(DEVICE)_kokkos
   KOKKOS_DEVICES = "OpenMP"
   KOKKOS_ARCH = "A64FX"
 endif
