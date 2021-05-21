@@ -85,6 +85,15 @@ ifneq (, $(findstring a64fx,$(DEVICES)))
     CXXFLAGS += -DLONG_ENOUGH_BUFFER -DSIMD -DFUJI
   endif
   LDFLAGS  = -Kfast,openmp -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstdc++
+
+  # SVE enabled FFTW setting for Fugaku
+  ifneq (, $(findstring fugaku,$(DEVICES)))
+    FFTW_PATH = /home/apps/r/OSS_CN/fftw-3.3.8
+    INCLUDE = -I$(FFTW_PATH)/include
+    LIB = -L$(FFTW_PATH)/lib64
+    CXXFLAGS += $(INCLUDE)
+    LDFLAGS += $(INCLUDE) $(LIB)
+  endif
   TARGET   = vlp4d.$(DEVICES)_openmp
 endif
 

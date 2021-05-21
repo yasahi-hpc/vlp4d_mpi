@@ -140,6 +140,14 @@ ifneq (,$(findstring a64fx,$(KOKKOS_DEVICES)))
 
   LINK = ${CXX}
   LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -Kfast,openmp -lstdc++
+
+  # SVE enabled FFTW setting for Fugaku
+  ifneq (, $(findstring fugaku,$(DEVICE)))
+    FFTW_PATH = /home/apps/r/OSS_CN/fftw-3.3.8
+    CXXFLAGS += -I$(FFTW_PATH)/include
+    LDFLAGS += -I$(FFTW_PATH)/include -L$(FFTW_PATH)/lib64
+  endif
+
   EXE = vlp4d.$(DEVICE)_kokkos
   KOKKOS_DEVICES = "OpenMP"
   KOKKOS_ARCH = "A64FX"
