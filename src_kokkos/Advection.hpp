@@ -552,7 +552,7 @@ namespace Advection {
     }
 
     #if defined(NO_SCATTER_VIEWS)
-      #if defined(SIMD) & defined(SIMD_ADV4D)
+      #if defined(SIMD)
         KOKKOS_INLINE_FUNCTION
         void operator()(const int i0, const int i1, const int i2, int &lerror) const {
           float64 xstar[4];
@@ -608,7 +608,7 @@ namespace Advection {
         }
       #endif
     #else
-      #if defined(SIMD) & defined(SIMD_ADV4D)
+      #if defined(SIMD)
         KOKKOS_INLINE_FUNCTION
         void operator()(const int i0, const int i1, const int i2) const {
           float64 xstar[4];
@@ -722,7 +722,7 @@ namespace Advection {
 
     const int TX = tiles[0], TY = tiles[1], TVX = tiles[2], TVY = tiles[3];
 
-    #if defined(SIMD) & defined(SIMD_ADV4D)
+    #if defined(SIMD)
       #if defined (LAYOUT_LEFT)
         // For LayoutLeft specialization for CPU
         MDPolicyType_3D advect_4d_policy({{ny_min,   nvx_min,   nvy_min}},

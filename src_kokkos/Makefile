@@ -89,26 +89,27 @@ endif
 ifneq (,$(findstring skx,$(KOKKOS_DEVICES)))
   CXX = CC
   CXXFLAGS = -O3
+
+  # disable scatter views and use parallel reduce for error check
+  CXXFLAGS += -DNO_SCATTER_VIEWS
+
   ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
     # enable auto-tuning against tile sizes
     CXXFLAGS += -DTILE_SIZE_TUNING
   endif
-  ifneq (,$(findstring NO_SCATTER_VIEW,$(OPTIMIZATION)))
-    # disable scatter views and use parallel reduce for error check
-    CXXFLAGS += -DNO_SCATTER_VIEWS
-  endif
-  ifneq (,$(findstring LAYOUT_LEFT,$(OPTIMIZATION)))
+
+  # STEP 1 (LayoutLeft)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
     # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS
+    CXXFLAGS += -DLAYOUT_LEFT
   endif
-  ifneq (,$(findstring BOTH,$(OPTIMIZATION)))
+
+  # STEP 2 (LayoutLeft + SIMD)
+  ifneq (,$(findstring STEP2,$(OPTIMIZATION)))
     # enable SIMD optimization
-    CXXFLAGS += -DLAYOUT_LEFT -DNO_SCATTER_VIEWS -DSIMD -DSIMD_ADV4D
+    CXXFLAGS += -DLAYOUT_LEFT -DSIMD
   endif
-  ifneq (,$(findstring ALL,$(OPTIMIZATION)))
-    # enable layout-tuning
-    CXXFLAGS += -DLAYOUT_LEFT -DTILE_SIZE_TUNING -DNO_ERROR_CHECK
-  endif
+
   LINK = ${CXX}
   LDFLAGS = -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f
   EXE = vlp4d.jfrs1_skx_kokkos
