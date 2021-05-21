@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=4  # Number of processes per node
 #SBATCH --cpus-per-task=20   # logical core per task
 #SBATCH --time=00:30:00      # execute time (hh:mm:ss)
-#SBATCH --account=GT5DSTC    # account number
+#SBATCH --account=GYS_DATA   # account number
 #SBATCH -o %j.out            # strout filename (%j is jobid)
 #SBATCH -e %j.err            # stderr filename (%j is jobid)
 #SBATCH -p S-M               # Job class
