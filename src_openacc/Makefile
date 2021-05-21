@@ -85,7 +85,7 @@ ifneq (, $(findstring a64fx,$(DEVICES)))
     CXXFLAGS += -DLONG_ENOUGH_BUFFER -DSIMD -DFUJI
   endif
   LDFLAGS  = -Kfast,openmp -lfftw3_threads -lfftw3 -lfftw3f_threads -lfftw3f -lstdc++
-  TARGET   = vlp4d.flow_a64fx_openmp
+  TARGET   = vlp4d.$(DEVICES)_openmp
 endif
 
 # Intel Skylake on JFRS-1 (IFERC-CSC, Japan)
