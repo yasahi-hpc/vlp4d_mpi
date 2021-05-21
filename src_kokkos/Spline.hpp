@@ -81,7 +81,7 @@ public:
     void getSplineCoeff1D(ViewType &fn1d) const {
       const int istart = fn1d.begin(0) + HALO_PTS - 2;
       const int iend   = fn1d.end(0)   - HALO_PTS + 1;
-      float64 tmp1d[LONG_WIDTH];
+      float64 tmp1d[LONG_BUFFER_WIDTH];
     
       // fn[istart-1] stores the precomputed left sum
       tmp1d[0] = fn1d(istart-1) + fn1d(istart);

@@ -39,7 +39,7 @@ typedef Kokkos::DefaultExecutionSpace execution_space;
   #define LOOP_SIMD
 #endif
 
-#define LONG_WIDTH 256
+#define LONG_BUFFER_WIDTH 256
 
 #if defined ( LAYOUT_LEFT )
   // For layout optimization and layout left
