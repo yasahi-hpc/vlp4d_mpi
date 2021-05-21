@@ -31,14 +31,21 @@ We have tested the code on the following environments.
 - Nvidia Tesla p100 on Tsubame3.0 (Tokyo Tech, Japan)  
 Compilers (cuda/10.2.48, pgi19.1)
 
+- Nvidia Tesla v100 on Marconi100 (Cineca, Italy)  
+Compilers (cuda/10.2.48, pgi19.1)
+
 - Intel Skylake on JFRS-1 (IFERC-CSC, Japan)  
 Compilers (intel19.0.0.117)
 
 - Fujitsu A64FX on Flow (Nagoya Univ., Japan)  
-Compilers (Fujitsu compiler 1.2.25)
+Compilers (Fujitsu compiler 1.2.27)
 
 # Usage
 ## Compile
+Firstly, you need to git clone on your environment as
+```
+git clone https://github.com/yasahi-hpc/vlp4d_mpi.git
+```
 Depending on your configuration, you may have to modify the Makefile.
 You may add your configuration in the same way as 
 ```
@@ -49,6 +56,9 @@ LDFLAGS  = -Mcudalib=cufft,cublas -ta=nvidia:cc60 -acc
 TARGET   = vlp4d.tsubame3.0_p100_openacc
 endif
 ```
+Before compiling, you need to load appropriate modules for MPI + CUDA/OpenACC environment. 
+The CUDA-Aware-MPI is necessary for this application.
+For CPU version, it is also necessary to make sure that [fftw](http://www.fftw.org) is avilable in your configuration. 
 
 ### OpenACC version
 ```
@@ -62,7 +72,8 @@ First of all, you need to install kokkos on your environment. Instructions are f
 
 ```
 export KOKKOS_PATH=your_kokkos_path # set your_kokkos_path
-export DEVICE=device_name # choose the device_name from "p100", "bdw", "skx", "a64fx_flow"
+export OMPICXX=$KOKKOSPATH/bin/nvccwrapper # Assuming OpenMPI as a MPI library (GPU only)
+export DEVICE=device_name # choose the device_name from "p100", "bdw", "skx", "fugaku_a64fx", "flow_a64fx"
 cd src_kokkos
 make
 ```
@@ -77,4 +88,60 @@ cd wk
 
 You can also try the two beam instability by setting the argument as "TSI20.dat".
 
+## Experimental workflow
+In order to evaluate the impact of optimizations, one has to compile the code on each environment. 
+Here, ```device_name``` is the name of the device one use in Makefile and job scripts. We assume that the Installation has already been made successfully. The impact of optimizations can be evaluated by comparing the standard output with different versions.
 
+### OpenACC version
+```
+export DEVICE=device_name
+export OPTIMIZATION=STEP1 # choose from STEP0-2 for CPUs and choose from STEP0-1 for GPUs
+cd src_openacc
+make
+cd ../wk
+./job.sh
+```
+
+### Kokkos version
+```
+export DEVICE=device_name
+export OMPICXX=$KOKKOSPATH/bin/nvccwrapper # Only for OpenMPI + GPU case
+export OPTIMIZATION=STEP1 # choose from STEP0-2 for CPUs and choose from STEP0-1 for GPUs
+cd src_kokkos
+make
+cd ../wk
+./job.sh
+```
+
+### Expected result
+If the code works correctly, one may find the standard output file in ascii format showing the timing at the bottom.  
+The timings look like (though not alingned in the standard output file)
+
+|  |  |  | 
+| ---- | ---- | ---- | 
+| total | 4.57123 [s], | 1 calls |  
+| MainLoop | 4.56027 [s], | 40 calls |
+| pack | 0.14395 [s], | 40 calls |
+| comm | 0.705633 [s], | 40 calls |
+| unpack | 0.0556184 [s], | 40 calls | 
+| advec2D | 0.258894 [s], | 40 calls |
+| advec4D |1.38773 [s], | 40 calls |
+| field |0.0474864 [s], | 80 calls |
+| all\_reduce |0.116563 [s], | 80 calls |
+| Fourier |0.0296469 [s], | 80 calls |
+| diag |0.0992476 [s], | 40 calls |
+| splinecoeff\_xy | 0.805345 [s], | 40 calls |
+| splinecoeff\_vxvy | 0.907955 [s], | 40 calls |
+
+Each column denotes the kernel name, total elapsed time in seconds, and number of call counts.
+The elapsed time ```s``` of a given kernel for a single iteration can be computed by
+```
+elapsed time [s] / number of call counts
+```
+
+The Flops and memory bandwidth are computed by the following formula
+```
+Flops = Nf/s,
+Bytes/s = Nb/s
+```
+where ```f``` and ```b``` denote the total amount of floating point operation and memory accesses per grid point. ```N``` represent the total number of grid points ans ```s``` is the elapsed time of a given kernel for a single iteration. ```f``` and ```b``` presented in Table 3 are the analytical estimates from the source code.
