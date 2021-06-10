@@ -6,6 +6,30 @@ vpath %.cpp $(sort $(dir $(SRC)))
 default: build
 	echo "Start Build"
 
+# Nvidia Tesla A100 on Wisteria (Univ. Tokyo, Japan)
+ifneq (,$(findstring A100,$(KOKKOS_DEVICES)))
+  CXX = mpicxx
+  CXXFLAGS = -O3
+
+  ifneq (,$(findstring TILE_SIZE,$(OPTIMIZATION)))
+    # enable auto-tuning against tile sizes
+    CXXFLAGS += -DTILE_SIZE_TUNING
+  endif
+
+  # STEP 1 (SIMD)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
+    # enable SIMD optimization
+    CXXFLAGS += -DSIMD
+  endif
+
+  LINK = mpicxx
+  LDFLAGS = -lcufft -lcublas
+  EXE = vlp4d.A100_Wisteria_kokkos
+  KOKKOS_DEVICES = "Cuda,OpenMP"
+  KOKKOS_ARCH = "SKX,AMPERE80"
+  KOKKOS_CUDA_OPTIONS += "enable_lambda"
+endif
+
 # Nvidia Tesla V100 on Marconi100 (Cineca, Italy)
 ifneq (,$(findstring v100_marconi,$(KOKKOS_DEVICES)))
   CXX = mpicxx

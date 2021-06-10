@@ -14,6 +14,11 @@ elif ls *.m100_v100_kokkos > /dev/null 2>&1; then
   sbatch batch_scripts/sub_m100_v100_kokkos.sh
 elif ls *.m100_v100_openacc > /dev/null 2>&1; then
   sbatch batch_scripts/sub_m100_v100_acc.sh
+# Wisteria A100
+elif ls *.A100_Wisteria_kokkos > /dev/null 2>&1; then
+  pjsub batch_scripts/sub_Wisteria_A100_kokkos.sh
+elif ls *WISTERIA_A100_openacc > /dev/null 2>&1; then
+  pjsub batch_scripts/sub_Wisteria_A100_acc.sh
 # Oakforest pacs
 elif ls *.pacs_knl_openmp > /dev/null 2>&1; then
   pjsub batch_scripts/sub_pacs_knl_omp.sh

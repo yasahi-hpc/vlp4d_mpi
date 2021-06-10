@@ -1,6 +1,20 @@
 # Device can be p100, bdw, knl
 DEVICES = $(DEVICE)
 
+# Nvidia A100 on Wisteria (Univ. Tokyo, Japan)
+ifneq (,$(findstring A100,$(DEVICES)))
+  CXX      = mpicxx
+  CXXFLAGS = -O3 -ta=nvidia:cc80 -Minfo=accel -Mcudalib=cufft,cublas -std=c++11 -DENABLE_OPENACC -DLAYOUT_LEFT
+
+  # STEP 1 (LONG_ENOUGH_BUFFEr)
+  ifneq (,$(findstring STEP1,$(OPTIMIZATION)))
+    CXXFLAGS += -DLONG_ENOUGH_BUFFER
+  endif
+
+  LDFLAGS  = -Mcudalib=cufft,cublas -ta=nvidia:cc80 -acc
+  TARGET   = vlp4d.WISTERIA_A100_openacc
+endif
+
 # Nvidia V100 on Marconi100 (Cineca, Italy)
 ifneq (,$(findstring v100_marconi,$(DEVICES)))
   CXX      = mpicxx
