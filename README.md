@@ -58,7 +58,7 @@ endif
 ```
 Before compiling, you need to load appropriate modules for MPI + CUDA/OpenACC environment. 
 The CUDA-Aware-MPI is necessary for this application.
-For CPU version, it is also necessary to make sure that [fftw](http://www.fftw.org) is avilable in your configuration. 
+For CPU version, it is also necessary to make sure that [fftw](http://www.fftw.org) is available in your configuration. 
 
 ### OpenACC version
 ```
@@ -136,7 +136,7 @@ The timings look like (though not alingned in the standard output file)
 Each column denotes the kernel name, total elapsed time in seconds, and number of call counts.
 The elapsed time ```s``` of a given kernel for a single iteration can be computed by
 ```
-elapsed time [s] / number of call counts
+total elapsed time [s] / number of call counts
 ```
 
 The Flops and memory bandwidth are computed by the following formula
@@ -144,4 +144,4 @@ The Flops and memory bandwidth are computed by the following formula
 Flops = Nf/s,
 Bytes/s = Nb/s
 ```
-where ```f``` and ```b``` denote the total amount of floating point operation and memory accesses per grid point. ```N``` represent the total number of grid points ans ```s``` is the elapsed time of a given kernel for a single iteration. ```f``` and ```b``` presented in Table 3 are the analytical estimates from the source code.
+where ```f``` and ```b``` denote the total amount of floating point operation and memory accesses per grid point. ```N``` represent the total number of grid points ans ```s``` is the elapsed time of a given kernel for a single iteration. ```f``` and ```b``` presented in Table V of the paper (section VI) are the analytical estimates from the source code.
