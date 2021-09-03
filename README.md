@@ -3,12 +3,12 @@
 The vlp4d code solves Vlasov-Poisson equations in 4D (2d space, 2d velocity). From the numerical point of view, vlp4d is based on a semi-lagrangian scheme. Vlasov solver is typically based on a directional Strang splitting. The Poisson equation is treated with 2D Fourier transforms. For the sake of simplicity, all directions are, for the moment, handled with periodic boundary conditions. As a major update from [the pervious version](https://github.com/yasahi-hpc/vlp4d), we parallelized the code with MPI and upgrade the interpolatin scheme from Lagrange to Spline. 
 
 The Vlasov solver is based on advection's operators: 
-- Halo excahnge on f^n (P2P communications)  
-- Compute spline coefficient along (x, y)
-- 2D advection along x, y (Dt/2)
-- Poisson solver -> compute electric fields Ex and E
-- Compute spline coefficient along (vx, vy)
-- 4D advection along x, y, vx, vy directions for Dt
+- Halo excahnge on <img src="https://render.githubusercontent.com/render/math?math={f^{n}}"> (P2P communications)  
+- Compute spline coefficient along <img src="https://render.githubusercontent.com/render/math?math={ \left(x, y \right)}">
+- 2D advection along <img src="https://render.githubusercontent.com/render/math?math={x, y\ \left(\Delta t/2 \right) }">
+- Poisson solver -> compute electric fields <img src="https://render.githubusercontent.com/render/math?math={E_x}"> and <img src="https://render.githubusercontent.com/render/math?math={E_y}">
+- Compute spline coefficient along <img src="https://render.githubusercontent.com/render/math?math={ \left(v_{x}, v_{y} \right)}">
+- 4D advection along <img src="https://render.githubusercontent.com/render/math?math={ \left(x, y, v_{x}, v_{y} \right)}"> directions for <img src="https://render.githubusercontent.com/render/math?math={\Delta t}">
 
 Detailed descriptions of the test cases can be found in 
 - [Crouseilles & al. J. Comput. Phys., 228, pp. 1429-1446, (2009).](http://people.rennes.inria.fr/Nicolas.Crouseilles/loss4D.pdf)  
@@ -35,7 +35,7 @@ Compilers: cuda/10.2.48 + openmpi3.1.4 (Kokkos), pgi19.1 + openmpi3.1.4 (OpenACC
 Compilers cuda/10.2 + spectrum_mpi10.3.1 (Kokkos), Nvidia HPC SDK 20.11-0 (OpenACC)
 
 - Intel Skylake on JFRS-1 (IFERC-CSC, Japan)  
-Compilers (intel compiler 19.0.0.117)
+Compilers (intel compiler 18.0.2)
 
 - Fujitsu A64FX on Flow (Nagoya Univ., Japan)  
 Compilers (Fujitsu compiler 1.2.27)
@@ -88,7 +88,7 @@ cd wk
 
 You can also try the two beam instability by setting the argument as "TSI20.dat".
 
-## Experimental workflow
+## Experiment workflow
 In order to evaluate the impact of optimizations, one has to compile the code on each environment. 
 Here, ```device_name``` is the name of the device one use in Makefile and job scripts. We assume that the Installation has already been made successfully. The impact of optimizations can be evaluated by comparing the standard output with different versions.
 
