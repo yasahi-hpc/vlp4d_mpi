@@ -14,6 +14,8 @@ elif ls *.m100_v100_kokkos > /dev/null 2>&1; then
   sbatch batch_scripts/sub_m100_v100_kokkos.sh
 elif ls *.m100_v100_openacc > /dev/null 2>&1; then
   sbatch batch_scripts/sub_m100_v100_acc.sh
+elif ls *.m100_v100_omp4.5 > /dev/null 2>&1; then
+  sbatch batch_scripts/sub_m100_v100_omp4.5.sh
 # Wisteria A100
 elif ls *.A100_Wisteria_kokkos > /dev/null 2>&1; then
   pjsub batch_scripts/sub_Wisteria_A100_kokkos.sh

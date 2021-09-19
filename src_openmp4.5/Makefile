@@ -11,9 +11,10 @@ endif
 
 # Nvidia Tesla V100 on Marconi100 (Cineca, Italy)
 ifneq (, $(findstring v100_marconi,$(DEVICES)))
-CXX = nvc++
-CXXFLAGS = -O3 -std=c++17 -mp=gpu -mcmodel=medium -fast -Minfo=accel
-LDFLAGS = -mp=gpu
+CXX = mpic++
+#CXX = nvc++
+CXXFLAGS = -O3 -std=c++17 -mp=gpu -mcmodel=medium -fast -Minfo=accel -Mcudalib=cufft,cublas -DENABLE_OPENMP_OFFLOAD
+LDFLAGS = -mp=gpu -Mcudalib=cufft,cublas
 TARGET = vlp4d.m100_v100_omp4.5
 LINKER = mpic++
 endif
