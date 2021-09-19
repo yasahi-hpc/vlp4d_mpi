@@ -19,6 +19,8 @@ elif ls *.A100_Wisteria_kokkos > /dev/null 2>&1; then
   pjsub batch_scripts/sub_Wisteria_A100_kokkos.sh
 elif ls *WISTERIA_A100_openacc > /dev/null 2>&1; then
   pjsub batch_scripts/sub_Wisteria_A100_acc.sh
+elif ls *WISTERIA_A100_omp4.5 > /dev/null 2>&1; then
+  pjsub batch_scripts/sub_Wisteria_A100_omp4.5.sh
 # Oakforest pacs
 elif ls *.pacs_knl_openmp > /dev/null 2>&1; then
   pjsub batch_scripts/sub_pacs_knl_omp.sh
