@@ -19,8 +19,7 @@ namespace Advection {
   static void testError(std::vector<int> &err) {
     if(err[0] != 0) {
       fprintf(stderr, "Time step is too large, exiting\n");
-      std::cout << "err" << err[0] << std::endl;
-      //exit(0);
+      exit(0);
     }
   }
 
@@ -122,7 +121,6 @@ namespace Advection {
       shape_halo[i] = dom->local_nxmax_[i] - dom->local_nxmin_[i] + HALO_PTS*2 + 1;
 
     // Allocate 4D data structures with Offsets
-    //RealView4D fn_tmp("fn_tmp", shape_halo, nxmin_halo);
     Impl::deep_copy(fn_tmp, fn);
 
     std::vector<int> err(1, 0);
