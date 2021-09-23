@@ -50,23 +50,18 @@ namespace Spline {
     const int n2_min = fn.begin(2), n2_max = fn.end(2);
     const int n3_min = fn.begin(3), n3_max = fn.end(3);
 
-    //std::cout << "n0_min, n1_min, n2_min, n3_min = " << n0_min << ", " << n1_min << ", " << n2_min << ", " << n3_min << std::endl;
-    //std::cout << "n0_max, n1_max, n2_max, n3_max = " << n0_max << ", " << n1_max << ", " << n2_max << ", " << n3_max << std::endl;
-
     #if defined( ENABLE_OPENMP_OFFLOAD )
       const int i2start = n2_min + HALO_PTS - 2;
       const int i2end   = n2_max - HALO_PTS + 1;
       const int i3start = n3_min + HALO_PTS - 2;
       const int i3end   = n3_max - HALO_PTS + 1;
 
-      //std::cout << "offload" << std::endl;
       #pragma omp target teams distribute parallel for simd collapse(2)
       for(int i1=n1_min; i1 < n1_max; i1++) {
         for(int i0=n0_min; i0 < n0_max; i0++) {
           const float64 alpha = sqrt3 - 2;
           const float64 beta  = sqrt3 * (1 - alpha * alpha);
           #if defined( LONG_ENOUGH_BUFFER )
-      std::cout << "buffer" << std::endl;
             float64 tmp1d[LONG_WIDTH];
           #endif
           // row update
