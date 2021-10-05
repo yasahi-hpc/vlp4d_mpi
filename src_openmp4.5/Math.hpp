@@ -6,31 +6,8 @@
 namespace Impl {
   template <class ViewType>
   void swap(ViewType &a, ViewType &b) {
-    ViewType tmp = a;
-    a = b;
-    b = tmp;
+    b.swap(a);
   }
-
-  /*
-  template <class ViewType>
-  void deep_copy(ViewType &a, ViewType &b) {
-    const size_t n = a.size();
-    using type = typename ViewType::value_type_;
-    type *ptr_a = a.data();
-    type *ptr_b = b.data();
-
-    #if defined( ENABLE_OPENMP_OFFLOAD )
-      //#pragma omp target data use_device_addr(ptr_a, ptr_b)
-      //#pragma omp target data map(to:ptr_b) map(from:ptr_a)
-      #pragma omp target teams distribute parallel for simd
-    #else
-      #pragma omp parallel for
-    #endif
-    for(int i = 0; i < n; i++) {
-      ptr_a[i] = ptr_b[i];
-    }
-  }
-  */
 
   /*
   template <class ViewType>
@@ -60,8 +37,6 @@ namespace Impl {
     int n0_end   = n0 + n0_start, n1_end = n1 + n1_start, n2_end = n2 + n2_start, n3_end = n3 + n3_start;
 
     #if defined( ENABLE_OPENMP_OFFLOAD )
-    //std::cout << "n0_start, n1_start, n2_start, n3_start = " << n0_start << ", " << n1_start << ", " << n2_start << ", " << n3_start <<std::endl;
-    //std::cout << "n0_end, n1_end, n2_end, n3_end = " << n0_end << ", " << n1_end << ", " << n2_end << ", " << n3_end <<std::endl;
       #pragma omp target teams distribute parallel for simd collapse(4)
     #else
       #pragma omp parallel for collapse(2)
@@ -87,7 +62,6 @@ namespace Impl {
     type *ptr_c = c.data();
     
     #if defined( ENABLE_OPENMP_OFFLOAD )
-      //#pragma omp target data use_device_ptr(ptr_a, ptr_b, ptr_c)
       #pragma omp target teams distribute parallel for simd
     #else
       #pragma omp parallel for
