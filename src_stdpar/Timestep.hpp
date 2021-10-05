@@ -39,7 +39,7 @@ void onetimestep(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1, 
   comm.exchangeHalo(conf, fn, timers);
 
   timers[Splinecoeff_xy]->begin();
-  spline->computeCoeff_xy(fn, comm.rank());
+  spline->computeCoeff_xy(fn);
   Impl::deep_copy(fnp1, fn);
   timers[Splinecoeff_xy]->end();
 
@@ -60,7 +60,7 @@ void onetimestep(Config *conf, Distrib &comm, RealView4D &fn, RealView4D &fnp1, 
   timers[TimerEnum::Fourier]->end();
 
   timers[Splinecoeff_vxvy]->begin();
-  spline->computeCoeff_vxvy(fnp1, comm.rank());
+  spline->computeCoeff_vxvy(fnp1);
   timers[Splinecoeff_vxvy]->end();
 
   timers[Advec4D]->begin();

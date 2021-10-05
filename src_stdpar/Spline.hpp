@@ -54,11 +54,11 @@ public:
     if(transpose_ != nullptr) delete transpose_;
   }
 
-  void computeCoeff_xy(RealView4D &fn, int rank) {
-    computeCoeff_xy_<array_layout::value>(fn, rank);
+  void computeCoeff_xy(RealView4D &fn) {
+    computeCoeff_xy_<array_layout::value>(fn);
   }
-  void computeCoeff_vxvy(RealView4D &fn, int rank) {
-    computeCoeff_vxvy_<array_layout::value>(fn, rank);
+  void computeCoeff_vxvy(RealView4D &fn) {
+    computeCoeff_vxvy_<array_layout::value>(fn);
   }
 
   // Internal functions
@@ -66,7 +66,7 @@ private:
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutLeft>>::value, void>::type
-  computeCoeff_xy_(RealView4D &fn, int rank) {
+  computeCoeff_xy_(RealView4D &fn) {
 
     #if defined( _NVHPC_STDPAR_GPU )
       transpose_->forward(fn.data(), fn_trans_.data());
@@ -80,7 +80,7 @@ private:
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  computeCoeff_xy_(RealView4D &fn, int rank) {
+  computeCoeff_xy_(RealView4D &fn) {
     #if defined( _NVHPC_STDPAR_GPU )
       computeCoeff<array_layout::value>(fn, fn_tmp_);
     #else
@@ -93,7 +93,7 @@ private:
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutLeft>>::value, void>::type
-  computeCoeff_vxvy_(RealView4D &fn, int rank) {
+  computeCoeff_vxvy_(RealView4D &fn) {
     #if defined( _NVHPC_STDPAR_GPU )
       computeCoeff<array_layout::value>(fn, fn_tmp_);
     #else
@@ -106,7 +106,7 @@ private:
   template <Layout LayoutType>
     typename std::enable_if<std::is_same<std::integral_constant<Layout, LayoutType>,
                                          std::integral_constant<Layout, Layout::LayoutRight>>::value, void>::type
-  computeCoeff_vxvy_(RealView4D &fn, int rank) {
+  computeCoeff_vxvy_(RealView4D &fn) {
     #if defined( _NVHPC_STDPAR_GPU )
       transpose_->forward(fn.data(), fn_trans_.data());
       computeCoeff<array_layout::value>(fn_trans_, fn_tmp_);
