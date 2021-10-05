@@ -10,9 +10,7 @@
 namespace Impl {
   template <class ViewType>
   void swap(ViewType &a, ViewType &b) {
-    ViewType tmp = a;
-    a = b;
-    b = tmp;
+    b.swap(a);
   }
 
   template <class ViewType>
