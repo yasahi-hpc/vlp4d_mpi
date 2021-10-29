@@ -21,10 +21,8 @@ Detailed descriptions of the test cases can be found in
 For questions or comments, please find us in the AUTHORS file.
 
 # HPC
-From the view point of high perfomrance computing (HPC), the code is parallelized with OpenMP without MPI domain decomposition.
-In order to investigate the performance portability of this kind of kinietic plasma simulation codes, we implement the mini-app with
-a mixed OpenACC/OpenMP and Kokkos, where we suppress unnecessary duplications of code lines. The detailed description and obtained performance is found in
-- [Yuuichi Asahi, Guillaume Latu, Virginie Grandgirard, and Julien Bigot, "Performance Portable Implementation of a Kinetic Plasma Simulation Mini-app"](https://sc19.supercomputing.org/proceedings/workshops/workshop_files/ws_waccpd104s2-file1.pdf), in Proceedings of Sixth Workshop on Accelerator Programming Using Directives (WACCPD), IEEE, 2019.
+From the view point of high perfomrance computing (HPC), the code is parallelized with MPI + "X", where "X" is one of a mixed OpenMP3.0/OpenACC, OpenMP3.0/OpenMP4.5, Kokkos and parallel algorithm (experimental). We have investigated optimization strategies applicable to a kinetic plasma simulation code that makes use of the MPI + "X" implementation listed above. The details are presented in the [P3HPC workshop 2021](https://p3hpc.org/workshop/2021/). Our previous result for [non-MPI version](https://github.com/yasahi-hpc/vlp4d) is found in 
+- [Yuuichi Asahi, Guillaume Latu, Virginie Grandgirard, and Julien Bigot, "Performance Portable Implementation of a Kinetic Plasma Simulation Mini-app"](https://link.springer.com/chapter/10.1007/978-3-030-49943-3_6), in [Accelerator Programming Using Directives](https://link.springer.com/book/10.1007/978-3-030-49943-3) or in [Proceedings of Sixth Workshop on Accelerator Programming Using Directives (WACCPD), IEEE, 2019](https://sc19.supercomputing.org/proceedings/workshops/workshop_files/ws_waccpd104s2-file1.pdf).
 
 # Test environments
 We have tested the code on the following environments. 
@@ -56,14 +54,24 @@ LDFLAGS  = -Mcudalib=cufft,cublas -ta=nvidia:cc60 -acc
 TARGET   = vlp4d.tsubame3.0_p100_openacc
 endif
 ```
-Before compiling, you need to load appropriate modules for MPI + CUDA/OpenACC environment. 
-The CUDA-Aware-MPI is necessary for this application.
+Before compiling, you need to load appropriate modules for MPI + CUDA/OpenACC/OpenMP4.5 environment. 
+CUDA-Aware-MPI is necessary for this application.
 For CPU version, it is also necessary to make sure that [fftw](http://www.fftw.org) is available in your configuration. 
+OpenMP4.5 and stdpar versions are experimental and not appeared in the workshop paper.
+For OpenMP4.5 and stdpar versions, we have only tested with ```nvc++``` in Nvidia HPC SDK.
 
 ### OpenACC version
 ```
-export DEVICE=device_name # choose the device_name from "p100", "bdw", "knl", "skx", "a64fx_flow"
+export DEVICE=device_name # choose the device_name from "p100", "v100", "a100", "bdw", "knl", "skx", "a64fx"
 cd src_openacc
+make
+```
+
+### OpenMP4.5 version
+This is an experimental version (not appeared in the workshop paper). 
+```
+export DEVICE=device_name # choose the device_name from "v100", "a100"
+cd src_openmp4.5
 make
 ```
 
@@ -73,20 +81,26 @@ First of all, you need to install kokkos on your environment. Instructions are f
 ```
 export KOKKOS_PATH=your_kokkos_path # set your_kokkos_path
 export OMPICXX=$KOKKOSPATH/bin/nvccwrapper # Assuming OpenMPI as a MPI library (GPU only)
-export DEVICE=device_name # choose the device_name from "p100", "bdw", "skx", "fugaku_a64fx", "flow_a64fx"
+export DEVICE=device_name # choose the device_name from "p100", "v100", "a100", "bdw", "skx", "a64fx"
 cd src_kokkos
 make
 ```
 
+### C++ parallel algorithm (stdpar) version
+This is an experimental version (not appeared in the workshop paper). Performance test has been made on A100 GPU. Further optimizations are needed for this version.
+```
+export DEVICE=device_name # choose the device_name from "p100", "v100", "a100", "icelake"
+cd src_stdpar
+make
+```
+
 ## Run
-Depending on your configuration, you may have to modify the job.sh in wk and sub_*.sh in wk/batch_scripts.
+Depending on your configuration, you may have to modify the ```job.sh``` in ```wk``` and ```sub_*.sh``` in ```wk/batch_scripts```.
 
 ```
 cd wk
 ./job.sh
 ```
-
-You can also try the two beam instability by setting the argument as "TSI20.dat".
 
 ## Experiment workflow
 In order to evaluate the impact of optimizations, one has to compile the code on each environment. 
@@ -102,12 +116,36 @@ cd ../wk
 ./job.sh
 ```
 
+### OpenMP4.5 version
+This is an experimental version (not appeared in the workshop paper). 
+It seems important to map GPUs before calling ```MPI_Init```. See [wrapper.sh](https://github.com/yasahi-hpc/vlp4d_mpi/blob/master/wk/batch_scripts/wrapper.sh) and [sub_Wisteria_A100_omp4.5.sh](https://github.com/yasahi-hpc/vlp4d_mpi/blob/master/wk/batch_scripts/sub_Wisteria_A100_omp4.5.sh).
+```
+export DEVICE=device_name
+export OPTIMIZATION=STEP1 # choose from STEP0-1 for GPUs
+cd src_openmp4.5
+make
+cd ../wk
+./job.sh
+```
+
 ### Kokkos version
 ```
 export DEVICE=device_name
 export OMPICXX=$KOKKOSPATH/bin/nvccwrapper # Only for OpenMPI + GPU case
 export OPTIMIZATION=STEP1 # choose from STEP0-2 for CPUs and choose from STEP0-1 for GPUs
 cd src_kokkos
+make
+cd ../wk
+./job.sh
+```
+
+### C++ parallel algorithm (stdpar) version
+This is an experimental version (not appeared in the workshop paper). 
+As well as the OpenMP4.5 version, it is recommended to map GPUs before calling ```MPI_Init```. See [sub_Wisteria_A100_stdpar.sh](https://github.com/yasahi-hpc/vlp4d_mpi/blob/master/wk/batch_scripts/sub_Wisteria_A100_stdpar.sh).
+
+```
+export DEVICE=device_name
+cd src_stdpar
 make
 cd ../wk
 ./job.sh
